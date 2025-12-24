@@ -33,7 +33,7 @@ from strategy.data_loader import DataLoader
 from strategy.signals import MomentumSignals, CompositeSignal
 from strategy.optimizer import PortfolioOptimizer, CostAwareOptimizer
 from strategy.backtest import PortfolioBacktester, VectorBTBacktester
-from strategy.quallamaggie import QuallamaggieScreener
+from strategy.quallamaggie import QuallamaggieScreener, QuallamaggieBacktester
 
 warnings.filterwarnings('ignore')
 
@@ -518,6 +518,221 @@ def run_quallamaggie_screener(
     return shortlist_df
 
 
+def run_strategy_comparison(
+    start_date: str = None,
+    portfolio_value: float = 100000,
+    min_adr: float = 4.0,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Compare Quallamaggie, Dual Momentum, and HRP strategies.
+    
+    Runs all three strategies on overlapping data and produces
+    a comparison table with key metrics.
+    
+    Args:
+        start_date: Start date for backtest (default: 3 years ago)
+        portfolio_value: Initial capital in AUD
+        min_adr: Minimum ADR% for Quallamaggie screener
+        verbose: Print detailed output
+        
+    Returns:
+        pd.DataFrame: Comparison of strategy metrics
+    """
+    from strategy.optimizer import PortfolioOptimizer
+    
+    # Default to 3 years of data
+    if start_date is None:
+        start_date = (datetime.now() - timedelta(days=1095)).strftime('%Y-%m-%d')
+    
+    if verbose:
+        print("\n" + "=" * 80)
+        print("STRATEGY COMPARISON: Quallamaggie vs Dual Momentum vs HRP")
+        print("=" * 80)
+        print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        print(f"Initial Capital: ${portfolio_value:,.2f} AUD")
+        print(f"Data Period: {start_date} to today")
+        print("=" * 80)
+    
+    # ========== LOAD DATA ==========
+    loader = DataLoader(start_date=start_date)
+    
+    # Get tickers for comparison (use a common universe)
+    comparison_tickers = ['SPY', 'QQQ', 'TLT', 'GLD', 'IWM', 'EFA', 'VNQ']
+    screener_tickers = get_screener_universe()[:20]  # Top 20 for speed
+    
+    if verbose:
+        print("\n[1/4] Loading data...")
+    
+    # Load Close prices for DM/HRP strategies
+    prices_aud, returns_aud = loader.load_selective_dataset(comparison_tickers)
+    
+    # Load OHLC for Quallamaggie
+    ohlc_data = loader.fetch_ohlc(screener_tickers, convert_to_aud=False)
+    
+    results = {}
+    
+    # ========== 1. DUAL MOMENTUM STRATEGY ==========
+    if verbose:
+        print("\n[2/4] Running Dual Momentum backtest...")
+    
+    bt = PortfolioBacktester(prices_aud, portfolio_value)
+    dm_result = bt.run_dual_momentum_backtest(
+        lookback=252,
+        defensive_asset='TLT',
+        rebalance_freq='monthly'
+    )
+    
+    results['Dual Momentum'] = {
+        'Final Value': dm_result.portfolio_value.iloc[-1],
+        'Total Return': dm_result.metrics['total_return'] * 100,
+        'CAGR': dm_result.metrics['cagr'] * 100,
+        'Volatility': dm_result.metrics['volatility'] * 100,
+        'Sharpe Ratio': dm_result.metrics['sharpe_ratio'],
+        'Sortino Ratio': dm_result.metrics['sortino_ratio'],
+        'Max Drawdown': dm_result.metrics['max_drawdown'] * 100,
+        'Calmar Ratio': dm_result.metrics['calmar_ratio'],
+        'Win Rate': dm_result.metrics['win_rate'] * 100,
+        'Total Trades': len(dm_result.trades),
+        'Total Costs': dm_result.trades['cost'].sum() if not dm_result.trades.empty else 0
+    }
+    
+    # ========== 2. HRP STRATEGY ==========
+    if verbose:
+        print("[3/4] Running HRP backtest...")
+    
+    # Use HRP optimization at each rebalance
+    def hrp_weights_func(prices_subset, idx):
+        if len(prices_subset) < 252:
+            n = len(prices_subset.columns)
+            return pd.Series(1/n, index=prices_subset.columns)
+        
+        try:
+            returns_subset = prices_subset.pct_change().dropna()
+            if len(returns_subset) < 60:
+                n = len(prices_subset.columns)
+                return pd.Series(1/n, index=prices_subset.columns)
+            
+            optimizer = PortfolioOptimizer(returns_subset.iloc[-252:])
+            weights = optimizer.optimize_hrp()
+            
+            # Ensure weights align with prices columns
+            aligned = pd.Series(0, index=prices_subset.columns)
+            for ticker in weights.index:
+                if ticker in aligned.index:
+                    aligned[ticker] = weights[ticker]
+            
+            return aligned / aligned.sum() if aligned.sum() > 0 else aligned
+        except Exception:
+            n = len(prices_subset.columns)
+            return pd.Series(1/n, index=prices_subset.columns)
+    
+    hrp_result = bt.run_backtest(hrp_weights_func, rebalance_freq='monthly', include_costs=True)
+    
+    results['HRP'] = {
+        'Final Value': hrp_result.portfolio_value.iloc[-1],
+        'Total Return': hrp_result.metrics['total_return'] * 100,
+        'CAGR': hrp_result.metrics['cagr'] * 100,
+        'Volatility': hrp_result.metrics['volatility'] * 100,
+        'Sharpe Ratio': hrp_result.metrics['sharpe_ratio'],
+        'Sortino Ratio': hrp_result.metrics['sortino_ratio'],
+        'Max Drawdown': hrp_result.metrics['max_drawdown'] * 100,
+        'Calmar Ratio': hrp_result.metrics['calmar_ratio'],
+        'Win Rate': hrp_result.metrics['win_rate'] * 100,
+        'Total Trades': len(hrp_result.trades),
+        'Total Costs': hrp_result.trades['cost'].sum() if not hrp_result.trades.empty else 0
+    }
+    
+    # ========== 3. QUALLAMAGGIE STRATEGY ==========
+    if verbose:
+        print("[4/4] Running Quallamaggie backtest...")
+    
+    qual_bt = QuallamaggieBacktester(
+        ohlc_data=ohlc_data,
+        min_adr=min_adr,
+        max_positions=5,
+        defensive_ticker=None  # Go to cash if nothing passes
+    )
+    
+    qual_result = qual_bt.run_backtest(
+        initial_capital=portfolio_value,
+        trade_fee=3.0,
+        rebalance_freq='monthly'
+    )
+    
+    if qual_result:
+        results['Quallamaggie'] = {
+            'Final Value': qual_result['metrics']['final_value'],
+            'Total Return': qual_result['metrics']['total_return'] * 100,
+            'CAGR': qual_result['metrics']['cagr'] * 100,
+            'Volatility': qual_result['metrics']['volatility'] * 100,
+            'Sharpe Ratio': qual_result['metrics']['sharpe_ratio'],
+            'Sortino Ratio': qual_result['metrics']['sortino_ratio'],
+            'Max Drawdown': qual_result['metrics']['max_drawdown'] * 100,
+            'Calmar Ratio': qual_result['metrics']['calmar_ratio'],
+            'Win Rate': qual_result['metrics']['win_rate'] * 100,
+            'Total Trades': qual_result['metrics']['total_trades'],
+            'Total Costs': qual_result['metrics']['total_costs']
+        }
+    
+    # ========== BUILD COMPARISON TABLE ==========
+    comparison_df = pd.DataFrame(results).T
+    
+    # Format for display
+    if verbose:
+        print("\n" + "=" * 80)
+        print("STRATEGY COMPARISON RESULTS")
+        print("=" * 80)
+        
+        # Create formatted display
+        display_df = comparison_df.copy()
+        display_df['Final Value'] = display_df['Final Value'].apply(lambda x: f"${x:,.2f}")
+        display_df['Total Return'] = display_df['Total Return'].apply(lambda x: f"{x:.2f}%")
+        display_df['CAGR'] = display_df['CAGR'].apply(lambda x: f"{x:.2f}%")
+        display_df['Volatility'] = display_df['Volatility'].apply(lambda x: f"{x:.2f}%")
+        display_df['Sharpe Ratio'] = display_df['Sharpe Ratio'].apply(lambda x: f"{x:.3f}")
+        display_df['Sortino Ratio'] = display_df['Sortino Ratio'].apply(lambda x: f"{x:.3f}")
+        display_df['Max Drawdown'] = display_df['Max Drawdown'].apply(lambda x: f"{x:.2f}%")
+        display_df['Calmar Ratio'] = display_df['Calmar Ratio'].apply(lambda x: f"{x:.3f}")
+        display_df['Win Rate'] = display_df['Win Rate'].apply(lambda x: f"{x:.1f}%")
+        display_df['Total Trades'] = display_df['Total Trades'].apply(lambda x: f"{int(x)}")
+        display_df['Total Costs'] = display_df['Total Costs'].apply(lambda x: f"${x:.2f}")
+        
+        print(display_df.T.to_string())
+        
+        # Identify winner for each metric
+        print("\n" + "-" * 80)
+        print("BEST STRATEGY BY METRIC:")
+        print("-" * 80)
+        
+        metric_winners = {
+            'Highest Return': comparison_df['CAGR'].idxmax(),
+            'Best Sharpe': comparison_df['Sharpe Ratio'].idxmax(),
+            'Best Sortino': comparison_df['Sortino Ratio'].idxmax(),
+            'Lowest Drawdown': comparison_df['Max Drawdown'].idxmax(),  # Less negative = better
+            'Best Calmar': comparison_df['Calmar Ratio'].idxmax(),
+            'Lowest Costs': comparison_df['Total Costs'].idxmin(),
+        }
+        
+        for metric, winner in metric_winners.items():
+            print(f"  {metric}: {winner}")
+        
+        print("-" * 80)
+        
+        # Show monthly screening history for Quallamaggie
+        print("\n" + "=" * 80)
+        print("QUALLAMAGGIE MONTHLY SCREENING HISTORY (Last 12 Months)")
+        print("=" * 80)
+        
+        monthly_table = qual_bt.get_monthly_summary_table()
+        if not monthly_table.empty:
+            print(monthly_table.tail(12).to_string())
+        else:
+            print("No screening history available.")
+    
+    return comparison_df
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -559,16 +774,62 @@ def main():
         action='store_true',
         help='Run demo with sample data'
     )
+    parser.add_argument(
+        '--compare',
+        action='store_true',
+        help='Compare Quallamaggie vs Dual Momentum vs HRP strategies'
+    )
+    parser.add_argument(
+        '--monthly-history',
+        action='store_true',
+        help='Show monthly screening history for Quallamaggie'
+    )
     
     args = parser.parse_args()
     
-    # Run Quallamaggie screener mode
+    # Run strategy comparison mode
+    if args.compare:
+        run_strategy_comparison(
+            start_date=args.start_date if args.start_date != '2015-01-01' else None,
+            portfolio_value=args.portfolio_value,
+            min_adr=args.min_adr,
+            verbose=True
+        )
+        return
+    
+    # Run Quallamaggie screener mode (with optional monthly history)
     if args.strategy == 'quallamaggie':
-        run_quallamaggie_screener(
+        shortlist = run_quallamaggie_screener(
             start_date=args.start_date if args.start_date != '2015-01-01' else None,
             min_adr=args.min_adr,
             verbose=True
         )
+        
+        # Show monthly history if requested
+        if args.monthly_history:
+            print("\n" + "=" * 70)
+            print("MONTHLY SCREENING HISTORY")
+            print("=" * 70)
+            
+            # Re-initialize to get history
+            loader = DataLoader(
+                start_date=(datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+            )
+            ohlc_data = loader.fetch_ohlc(get_screener_universe(), convert_to_aud=False)
+            
+            qual_bt = QuallamaggieBacktester(
+                ohlc_data=ohlc_data,
+                min_adr=args.min_adr,
+                max_positions=5
+            )
+            
+            monthly_table = qual_bt.get_monthly_summary_table()
+            if not monthly_table.empty:
+                print("\nMonthly Holdings (Position_1 = highest ADR%):")
+                print(monthly_table.tail(24).to_string())  # Last 24 months
+            else:
+                print("No screening history available.")
+        
         return
     
     # Run standard strategies

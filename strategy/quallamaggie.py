@@ -569,6 +569,327 @@ MOMENTUM:
         return report
 
 
+class QuallamaggieBacktester:
+    """
+    Backtest the Quallamaggie screening strategy.
+    
+    Strategy Logic:
+    1. At each rebalance date, run the screener on the universe
+    2. Equal weight among all passing tickers
+    3. If no tickers pass, go to cash or defensive asset
+    4. Monthly rebalancing with transaction costs
+    """
+    
+    def __init__(
+        self,
+        ohlc_data: Dict[str, pd.DataFrame],
+        min_adr: float = 4.0,
+        max_positions: int = 5,
+        defensive_ticker: str = None
+    ):
+        """
+        Initialize the backtester.
+        
+        Args:
+            ohlc_data: Dictionary mapping ticker -> OHLC DataFrame
+            min_adr: Minimum ADR percentage for screening
+            max_positions: Maximum number of positions to hold
+            defensive_ticker: Ticker to hold when nothing passes (e.g., 'TLT')
+        """
+        self.ohlc_data = ohlc_data
+        self.min_adr = min_adr
+        self.max_positions = max_positions
+        self.defensive_ticker = defensive_ticker
+        
+        # Build combined close price DataFrame
+        self.close_prices = self._build_close_prices()
+        
+    def _build_close_prices(self) -> pd.DataFrame:
+        """Build DataFrame of close prices from OHLC data."""
+        close_dict = {}
+        for ticker, df in self.ohlc_data.items():
+            df_copy = df.copy()
+            df_copy.columns = [c.title() for c in df_copy.columns]
+            if 'Close' in df_copy.columns:
+                close_dict[ticker] = df_copy['Close']
+        
+        if not close_dict:
+            return pd.DataFrame()
+        
+        close_df = pd.DataFrame(close_dict)
+        close_df = close_df.ffill().dropna(how='all')
+        return close_df
+    
+    def screen_at_date(self, as_of_date: pd.Timestamp) -> List[str]:
+        """
+        Run screener using data up to a specific date.
+        
+        Args:
+            as_of_date: Date to run screening at
+            
+        Returns:
+            List of tickers passing the screen
+        """
+        # Build OHLC data up to as_of_date
+        ohlc_subset = {}
+        for ticker, df in self.ohlc_data.items():
+            df_subset = df.loc[:as_of_date].copy()
+            if len(df_subset) >= 252:  # Need at least 1 year
+                ohlc_subset[ticker] = df_subset
+        
+        if not ohlc_subset:
+            return []
+        
+        # Run screener
+        try:
+            screener = QuallamaggieScreener(
+                ohlc_subset,
+                min_adr=self.min_adr,
+                max_dist_from_high=25.0,
+                min_dist_from_low=30.0
+            )
+            
+            passing = []
+            for ticker in ohlc_subset.keys():
+                result = screener.screen_ticker(ticker)
+                if result.passes_screen:
+                    passing.append((ticker, result.adr_percent))
+            
+            # Sort by ADR descending and limit to max_positions
+            passing.sort(key=lambda x: x[1], reverse=True)
+            return [t[0] for t in passing[:self.max_positions]]
+            
+        except Exception as e:
+            return []
+    
+    def get_monthly_screening_history(
+        self,
+        start_date: str = None,
+        end_date: str = None
+    ) -> pd.DataFrame:
+        """
+        Generate monthly screening results table.
+        
+        Shows which tickers passed the screen each month.
+        
+        Args:
+            start_date: Start date for history
+            end_date: End date for history
+            
+        Returns:
+            DataFrame with monthly screening results
+        """
+        if self.close_prices.empty:
+            return pd.DataFrame()
+        
+        # Get date range
+        all_dates = self.close_prices.index
+        if start_date:
+            all_dates = all_dates[all_dates >= start_date]
+        if end_date:
+            all_dates = all_dates[all_dates <= end_date]
+        
+        # Get month-end dates
+        monthly_dates = all_dates.to_series().groupby(
+            all_dates.to_period('M')
+        ).last()
+        
+        results = []
+        for period, date in monthly_dates.items():
+            passing_tickers = self.screen_at_date(date)
+            
+            # Get details for each passing ticker
+            for i, ticker in enumerate(passing_tickers[:self.max_positions]):
+                df = self.ohlc_data.get(ticker)
+                if df is not None:
+                    df_copy = df.loc[:date].copy()
+                    df_copy.columns = [c.title() for c in df_copy.columns]
+                    price = df_copy['Close'].iloc[-1]
+                    
+                    results.append({
+                        'Month': period.strftime('%Y-%m'),
+                        'Rank': i + 1,
+                        'Ticker': ticker,
+                        'Price': price,
+                        'Num_Passing': len(passing_tickers)
+                    })
+            
+            # Record if nothing passed
+            if not passing_tickers:
+                results.append({
+                    'Month': period.strftime('%Y-%m'),
+                    'Rank': 0,
+                    'Ticker': 'CASH' if not self.defensive_ticker else self.defensive_ticker,
+                    'Price': 0,
+                    'Num_Passing': 0
+                })
+        
+        return pd.DataFrame(results)
+    
+    def get_monthly_summary_table(
+        self,
+        start_date: str = None,
+        end_date: str = None
+    ) -> pd.DataFrame:
+        """
+        Generate a pivot table showing tickers held each month.
+        
+        Returns:
+            DataFrame with months as rows and position slots as columns
+        """
+        history = self.get_monthly_screening_history(start_date, end_date)
+        
+        if history.empty:
+            return pd.DataFrame()
+        
+        # Pivot to show positions by month
+        pivot = history.pivot_table(
+            index='Month',
+            columns='Rank',
+            values='Ticker',
+            aggfunc='first'
+        )
+        
+        # Rename columns
+        pivot.columns = [f'Position_{int(c)}' if c > 0 else 'Status' for c in pivot.columns]
+        
+        # Add count column
+        counts = history.groupby('Month')['Num_Passing'].first()
+        pivot['Total_Passing'] = counts
+        
+        return pivot
+    
+    def run_backtest(
+        self,
+        initial_capital: float = 100000,
+        trade_fee: float = 3.0,
+        rebalance_freq: str = 'monthly'
+    ) -> Dict:
+        """
+        Run full backtest of the Quallamaggie strategy.
+        
+        Args:
+            initial_capital: Starting capital in AUD
+            trade_fee: Fee per trade in AUD
+            rebalance_freq: Rebalancing frequency
+            
+        Returns:
+            Dictionary with backtest results and metrics
+        """
+        if self.close_prices.empty:
+            return {}
+        
+        prices = self.close_prices
+        returns = prices.pct_change().fillna(0)
+        
+        # Get rebalance dates (month starts)
+        dates = prices.index
+        monthly_flags = dates.to_series().dt.is_month_start | \
+                       (dates.to_series().shift(1).dt.month != dates.to_series().dt.month)
+        rebalance_dates = dates[monthly_flags]
+        
+        # Initialize tracking
+        portfolio_values = [initial_capital]
+        current_weights = pd.Series(0, index=prices.columns)
+        current_value = initial_capital
+        total_costs = 0
+        trade_count = 0
+        holdings_history = []
+        
+        for i in range(1, len(dates)):
+            date = dates[i]
+            prev_date = dates[i-1]
+            
+            # Check if rebalance day
+            if date in rebalance_dates:
+                # Run screener
+                passing_tickers = self.screen_at_date(prev_date)
+                
+                # Calculate new weights
+                target_weights = pd.Series(0, index=prices.columns)
+                
+                if passing_tickers:
+                    weight_per_stock = 1.0 / len(passing_tickers)
+                    for ticker in passing_tickers:
+                        if ticker in target_weights.index:
+                            target_weights[ticker] = weight_per_stock
+                elif self.defensive_ticker and self.defensive_ticker in target_weights.index:
+                    target_weights[self.defensive_ticker] = 1.0
+                
+                # Calculate trading costs
+                for ticker in prices.columns:
+                    current = current_weights.get(ticker, 0)
+                    target = target_weights[ticker]
+                    if abs(target - current) > 0.005:
+                        total_costs += trade_fee
+                        trade_count += 1
+                
+                current_value -= total_costs
+                current_weights = target_weights
+                
+                # Record holdings
+                holdings_history.append({
+                    'date': date,
+                    'holdings': passing_tickers if passing_tickers else ['CASH'],
+                    'num_holdings': len(passing_tickers)
+                })
+            
+            # Calculate daily return
+            daily_returns = returns.loc[date]
+            portfolio_return = (current_weights * daily_returns).sum()
+            current_value *= (1 + portfolio_return)
+            portfolio_values.append(current_value)
+        
+        # Build results
+        portfolio_series = pd.Series(portfolio_values, index=[dates[0]] + list(dates[1:]))
+        portfolio_returns = portfolio_series.pct_change().dropna()
+        
+        # Calculate metrics
+        trading_days = 252
+        total_return = (portfolio_series.iloc[-1] / portfolio_series.iloc[0]) - 1
+        years = len(portfolio_returns) / trading_days
+        cagr = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
+        volatility = portfolio_returns.std() * np.sqrt(trading_days)
+        
+        excess_return = portfolio_returns.mean() * trading_days - 0.04  # 4% risk-free
+        sharpe = excess_return / volatility if volatility > 0 else 0
+        
+        # Sortino
+        downside = portfolio_returns[portfolio_returns < 0]
+        downside_std = downside.std() * np.sqrt(trading_days) if len(downside) > 0 else volatility
+        sortino = excess_return / downside_std if downside_std > 0 else 0
+        
+        # Max drawdown
+        cumulative = (1 + portfolio_returns).cumprod()
+        rolling_max = cumulative.cummax()
+        drawdown = (cumulative - rolling_max) / rolling_max
+        max_drawdown = drawdown.min()
+        
+        # Calmar
+        calmar = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
+        
+        return {
+            'portfolio_value': portfolio_series,
+            'returns': portfolio_returns,
+            'holdings_history': pd.DataFrame(holdings_history),
+            'metrics': {
+                'initial_capital': initial_capital,
+                'final_value': portfolio_series.iloc[-1],
+                'total_return': total_return,
+                'cagr': cagr,
+                'volatility': volatility,
+                'sharpe_ratio': sharpe,
+                'sortino_ratio': sortino,
+                'max_drawdown': max_drawdown,
+                'calmar_ratio': calmar,
+                'total_trades': trade_count,
+                'total_costs': total_costs,
+                'win_rate': (portfolio_returns > 0).mean(),
+                'trading_days': len(portfolio_returns)
+            }
+        }
+
+
 def demo():
     """Demonstrate screener functionality with sample data."""
     print("=" * 60)
