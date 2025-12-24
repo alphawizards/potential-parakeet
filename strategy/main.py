@@ -22,14 +22,14 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add parent directory to path for standalone execution
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import CONFIG, BACKTEST_CONFIG, get_us_tickers, get_asx_tickers
-from data_loader import DataLoader
-from signals import MomentumSignals, CompositeSignal
-from optimizer import PortfolioOptimizer, CostAwareOptimizer
-from backtest import PortfolioBacktester, VectorBTBacktester
+from strategy.config import CONFIG, BACKTEST_CONFIG, get_us_tickers, get_asx_tickers
+from strategy.data_loader import DataLoader
+from strategy.signals import MomentumSignals, CompositeSignal
+from strategy.optimizer import PortfolioOptimizer, CostAwareOptimizer
+from strategy.backtest import PortfolioBacktester, VectorBTBacktester
 
 warnings.filterwarnings('ignore')
 

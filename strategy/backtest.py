@@ -19,7 +19,7 @@ import warnings
 # vectorbt for high-performance backtesting
 import vectorbt as vbt
 
-from config import CONFIG, BACKTEST_CONFIG, is_us_ticker
+from .config import CONFIG, BACKTEST_CONFIG, is_us_ticker
 
 warnings.filterwarnings('ignore')
 

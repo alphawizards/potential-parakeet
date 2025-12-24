@@ -14,7 +14,7 @@ import numpy as np
 from typing import Tuple, Optional, Dict, List
 import pandas_ta as ta
 
-from config import CONFIG
+from .config import CONFIG
 
 
 class MomentumSignals:

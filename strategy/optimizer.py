@@ -23,7 +23,7 @@ import warnings
 # Riskfolio-Lib imports
 import riskfolio as rp
 
-from config import CONFIG, is_us_ticker, get_fx_cost
+from .config import CONFIG, is_us_ticker, get_fx_cost
 
 warnings.filterwarnings('ignore')
 
@@ -104,13 +104,25 @@ class PortfolioOptimizer:
         Returns:
             pd.Series: Optimal weights
         """
-        # Estimate covariance only (no expected returns needed for HRP)
-        self.portfolio.assets_stats(method_mu='hist', method_cov='ledoit')
+        # Adjust constraints based on number of assets
+        # If n_assets * max_weight < 1, we need to relax max_weight
+        n_assets = self.n_assets
+        effective_max = max(self.max_weight, 1.0 / n_assets + 0.01)
+        effective_min = min(self.min_weight, 1.0 / n_assets - 0.01)
+        effective_min = max(0, effective_min)  # Can't be negative
+        
+        # Use HCPortfolio for hierarchical clustering methods (HRP)
+        hc_portfolio = rp.HCPortfolio(
+            returns=self.returns,
+            w_max=effective_max,
+            w_min=effective_min
+        )
         
         # Optimize using HRP
-        weights = self.portfolio.optimization(
+        weights = hc_portfolio.optimization(
             model='HRP',
             codependence=codependence,
+            obj='MinRisk',
             rm=rm,
             rf=CONFIG.RISK_FREE_RATE,
             linkage=linkage,
@@ -120,7 +132,7 @@ class PortfolioOptimizer:
         if weights is None:
             raise ValueError("HRP optimization failed")
         
-        # Apply weight constraints manually (HRP doesn't enforce them)
+        # Apply weight constraints manually (if not properly enforced)
         weights = self._apply_weight_constraints(weights)
         
         return weights.squeeze()

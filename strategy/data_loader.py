@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 import warnings
 from scipy import stats
 
-from config import CONFIG, get_us_tickers, get_asx_tickers, is_us_ticker
+from .config import CONFIG, get_us_tickers, get_asx_tickers, is_us_ticker
 
 warnings.filterwarnings('ignore')
 
