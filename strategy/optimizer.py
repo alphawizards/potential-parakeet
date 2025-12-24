@@ -334,8 +334,7 @@ class CostAwareOptimizer(PortfolioOptimizer):
     Portfolio optimizer that accounts for transaction costs.
     
     Extends base optimizer with:
-    - Stake.com FX fees (70bps)
-    - ASX brokerage ($3)
+    - Flat $3 AUD per trade (Stake.com brokerage)
     - Tax drag considerations
     """
     
@@ -367,6 +366,8 @@ class CostAwareOptimizer(PortfolioOptimizer):
         """
         Calculate total trading costs to reach target weights.
         
+        Updated: $3 AUD flat fee per trade for all assets.
+        
         Args:
             target_weights: Target portfolio weights
             
@@ -376,7 +377,7 @@ class CostAwareOptimizer(PortfolioOptimizer):
         weight_diff = target_weights - self.current_weights
         weight_diff = weight_diff.fillna(0)
         
-        total_fx_cost = 0.0
+        trade_fee_aud = 3.0  # $3 AUD per trade
         total_brokerage = 0.0
         trade_count = 0
         
@@ -384,23 +385,14 @@ class CostAwareOptimizer(PortfolioOptimizer):
             delta = abs(weight_diff[ticker])
             
             if delta > 0.005:  # Only count trades > 0.5% change
-                trade_value = delta * self.portfolio_value
-                
-                if is_us_ticker(ticker):
-                    # FX cost (both ways for round trip)
-                    fx_cost = trade_value * (CONFIG.FX_FEE_BPS / 10000)
-                    total_fx_cost += fx_cost
-                else:
-                    # ASX brokerage
-                    total_brokerage += CONFIG.ASX_BROKERAGE_AUD
-                
+                # Flat $3 AUD fee per trade for all assets
+                total_brokerage += trade_fee_aud
                 trade_count += 1
         
-        total_cost = total_fx_cost + total_brokerage
+        total_cost = total_brokerage
         cost_pct = (total_cost / self.portfolio_value) * 100
         
         return {
-            'fx_cost_aud': total_fx_cost,
             'brokerage_aud': total_brokerage,
             'total_cost_aud': total_cost,
             'cost_pct': cost_pct,

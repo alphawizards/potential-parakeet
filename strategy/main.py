@@ -242,11 +242,11 @@ class QuantStrategy:
             expected_alpha=expected_alpha
         )
         
-        print(f"\nCost Analysis:")
+        print(f"\nCost Analysis ($3 AUD per trade):")
         print(f"  Expected Alpha: {analysis['expected_alpha']*100:.2f}%")
-        print(f"  FX Costs: ${analysis['fx_cost_aud']:.2f}")
         print(f"  Brokerage: ${analysis['brokerage_aud']:.2f}")
         print(f"  Total Cost: ${analysis['total_cost_aud']:.2f}")
+        print(f"  Trade Count: {analysis['trade_count']}")
         print(f"  Cost Drag: {analysis['cost_drag']*100:.3f}%")
         print(f"  Net Benefit: {analysis['net_benefit']*100:.3f}%")
         print(f"  Turnover: {analysis['turnover']*100:.1f}%")
@@ -370,18 +370,15 @@ class QuantStrategy:
         print(f"\nTotal US ETF allocation: {recommendations['us_etf_allocation']*100:.1f}%")
         print(f"Total ASX ETF allocation: {recommendations['asx_etf_allocation']*100:.1f}%")
         
-        # Calculate expected FX costs for US portion
-        us_trade_value = recommendations['us_etf_allocation'] * self.portfolio_value
-        fx_cost = us_trade_value * (CONFIG.FX_FEE_BPS / 10000)
+        # Calculate expected brokerage costs ($3 per trade)
+        num_positions = sum(1 for w in self.weights if w > 0.01)
+        brokerage_cost = num_positions * 3.0  # $3 AUD per trade
         
-        print(f"\nExpected FX Cost (US portion): ${fx_cost:.2f}")
-        print(f"Breakeven Alpha Required: {(fx_cost / self.portfolio_value * 2) * 100:.2f}% annual")
+        print(f"\nExpected Brokerage Cost: ${brokerage_cost:.2f} ({num_positions} trades × $3)")
+        print(f"Cost as % of Portfolio: {(brokerage_cost / self.portfolio_value) * 100:.3f}%")
         
         print("\n💡 RECOMMENDATION:")
-        if recommendations['asx_etf_allocation'] > 0.6:
-            print("  → Portfolio is mostly ASX ETFs - low transaction costs!")
-        else:
-            print("  → Consider ASX equivalents to reduce FX friction")
+        print(f"  → Low transaction costs with $3/trade structure")
         
         return recommendations
     

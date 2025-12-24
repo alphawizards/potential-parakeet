@@ -280,25 +280,22 @@ class PortfolioBacktester:
                                    current_weights: pd.Series,
                                    target_weights: pd.Series,
                                    portfolio_value: float) -> float:
-        """Calculate trading cost for rebalance."""
+        """Calculate trading cost for rebalance.
+        
+        Updated: $3 AUD flat fee per trade for all assets (US and ASX).
+        This reflects Stake.com's $3 USD brokerage fee structure.
+        """
         total_cost = 0.0
+        trade_fee_aud = 3.0  # $3 AUD per trade
         
         for ticker in target_weights.index:
             current = current_weights.get(ticker, 0)
             target = target_weights[ticker]
             delta = abs(target - current)
             
-            if delta > 0.005:  # Skip tiny trades
-                trade_value = delta * portfolio_value
-                
-                if is_us_ticker(ticker):
-                    # FX cost (one way - assume we're not doing round trip immediately)
-                    cost = trade_value * (CONFIG.FX_FEE_BPS / 10000)
-                else:
-                    # ASX flat fee
-                    cost = CONFIG.ASX_BROKERAGE_AUD
-                
-                total_cost += cost
+            if delta > 0.005:  # Skip tiny trades (< 0.5% weight change)
+                # Flat $3 AUD fee per trade for all assets
+                total_cost += trade_fee_aud
         
         return total_cost
     
