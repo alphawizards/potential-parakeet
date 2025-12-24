@@ -56,21 +56,35 @@ class QuallamaggieScreener:
     - Are near their 52-week highs (within 25%)
     - Have pulled back from lows significantly (> 30% above)
     - Show high average daily range (ADR > 4%)
-    - Have positive momentum across multiple timeframes
+    - Have positive momentum across configurable timeframes
     
     Attributes:
         ohlc_data: Dict mapping ticker -> DataFrame with OHLC + Volume
         min_adr: Minimum ADR percentage threshold (default: 4.0)
         max_dist_from_high: Maximum distance from 52-week high (default: 25%)
         min_dist_from_low: Minimum distance from 52-week low (default: 30%)
+        momentum_filter: Which momentum periods to require ('all', '1m', '3m', '6m')
     """
+    
+    # Momentum filter options
+    MOMENTUM_FILTERS = {
+        'all': [1, 3, 6],      # Require all three periods positive
+        '1m': [1],             # Only 1-month momentum
+        '3m': [3],             # Only 3-month momentum
+        '6m': [6],             # Only 6-month momentum
+        '1m_3m': [1, 3],       # 1-month and 3-month
+        '3m_6m': [3, 6],       # 3-month and 6-month
+        '1m_6m': [1, 6],       # 1-month and 6-month
+        'none': [],            # No momentum filter (trend only)
+    }
     
     def __init__(
         self,
         ohlc_data: Dict[str, pd.DataFrame],
         min_adr: float = 4.0,
         max_dist_from_high: float = 25.0,
-        min_dist_from_low: float = 30.0
+        min_dist_from_low: float = 30.0,
+        momentum_filter: str = 'all'
     ):
         """
         Initialize the Quallamaggie Screener.
@@ -82,11 +96,22 @@ class QuallamaggieScreener:
             min_adr: Minimum Average Daily Range percentage (default: 4.0%)
             max_dist_from_high: Max % below 52-week high (default: 25%)
             min_dist_from_low: Min % above 52-week low (default: 30%)
+            momentum_filter: Which momentum periods to check for positive returns.
+                           Options: 'all' (1m+3m+6m), '1m', '3m', '6m', 
+                                   '1m_3m', '3m_6m', '1m_6m', 'none'
         """
         self.ohlc_data = ohlc_data
         self.min_adr = min_adr
         self.max_dist_from_high = max_dist_from_high
         self.min_dist_from_low = min_dist_from_low
+        self.momentum_filter = momentum_filter
+        
+        # Validate momentum filter
+        if momentum_filter not in self.MOMENTUM_FILTERS:
+            raise ValueError(f"Invalid momentum_filter: {momentum_filter}. "
+                           f"Options: {list(self.MOMENTUM_FILTERS.keys())}")
+        
+        self.required_momentum_periods = self.MOMENTUM_FILTERS[momentum_filter]
         
         # Validate input data
         self._validate_data()
@@ -409,7 +434,7 @@ class QuallamaggieScreener:
         # Check trend template
         trend_ok = self.get_trend_template(close)
         
-        # Determine pass/fail with reason
+        # Determine pass/fail with reason based on momentum filter
         reasons = []
         
         if not trend_ok:
@@ -418,14 +443,12 @@ class QuallamaggieScreener:
         if adr < self.min_adr:
             reasons.append(f"ADR {adr:.1f}% < {self.min_adr}%")
         
-        if mom_1m <= 0:
-            reasons.append(f"1M momentum {mom_1m:.1f}% <= 0")
-        
-        if mom_3m <= 0:
-            reasons.append(f"3M momentum {mom_3m:.1f}% <= 0")
-        
-        if mom_6m <= 0:
-            reasons.append(f"6M momentum {mom_6m:.1f}% <= 0")
+        # Check momentum based on configured filter periods
+        momentum_values = {1: mom_1m, 3: mom_3m, 6: mom_6m}
+        for period in self.required_momentum_periods:
+            mom_val = momentum_values[period]
+            if mom_val <= 0:
+                reasons.append(f"{period}M momentum {mom_val:.1f}% <= 0")
         
         passes = len(reasons) == 0
         reason_str = "; ".join(reasons) if reasons else "All criteria passed"
@@ -578,6 +601,12 @@ class QuallamaggieBacktester:
     2. Equal weight among all passing tickers
     3. If no tickers pass, go to cash or defensive asset
     4. Monthly rebalancing with transaction costs
+    
+    Supports multiple momentum filter modes:
+    - 'all': Require positive 1M, 3M, and 6M momentum (original Quallamaggie)
+    - '1m': Only require positive 1M momentum
+    - '3m': Only require positive 3M momentum
+    - '6m': Only require positive 6M momentum
     """
     
     def __init__(
@@ -585,7 +614,8 @@ class QuallamaggieBacktester:
         ohlc_data: Dict[str, pd.DataFrame],
         min_adr: float = 4.0,
         max_positions: int = 5,
-        defensive_ticker: str = None
+        defensive_ticker: str = None,
+        momentum_filter: str = 'all'
     ):
         """
         Initialize the backtester.
@@ -595,11 +625,13 @@ class QuallamaggieBacktester:
             min_adr: Minimum ADR percentage for screening
             max_positions: Maximum number of positions to hold
             defensive_ticker: Ticker to hold when nothing passes (e.g., 'TLT')
+            momentum_filter: Momentum filter mode ('all', '1m', '3m', '6m')
         """
         self.ohlc_data = ohlc_data
         self.min_adr = min_adr
         self.max_positions = max_positions
         self.defensive_ticker = defensive_ticker
+        self.momentum_filter = momentum_filter
         
         # Build combined close price DataFrame
         self.close_prices = self._build_close_prices()
@@ -640,13 +672,14 @@ class QuallamaggieBacktester:
         if not ohlc_subset:
             return []
         
-        # Run screener
+        # Run screener with configured momentum filter
         try:
             screener = QuallamaggieScreener(
                 ohlc_subset,
                 min_adr=self.min_adr,
                 max_dist_from_high=25.0,
-                min_dist_from_low=30.0
+                min_dist_from_low=30.0,
+                momentum_filter=self.momentum_filter
             )
             
             passing = []
