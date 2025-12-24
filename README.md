@@ -12,14 +12,16 @@ A comprehensive quantitative investing framework implementing **Dual Momentum + 
 - **Goal**: Maximize risk-adjusted returns for Australian retail investors using US and Global equities/ETFs
 - **Base Currency**: AUD (all analysis performed on AUD-normalized data)
 - **Platforms**: Stake.com (US ETFs), ASX Brokers (Australian ETFs)
+- **Trade Fee**: $3 AUD per trade (flat fee)
 
 ### Key Features
 
 1. **AUD Currency Normalization**: All US assets converted to AUD before analysis to capture true volatility
 2. **Dual Momentum Signals**: Combines absolute momentum (trend) + relative momentum (cross-sectional)
 3. **Hierarchical Risk Parity (HRP)**: Robust portfolio optimization without expected return estimation
-4. **Cost-Aware Execution**: Accounts for Stake.com's 70bps FX fee and ASX brokerage
+4. **Cost-Aware Execution**: $3 AUD flat fee per trade
 5. **Tax Efficiency**: Designed for Australian CGT rules (12-month discount consideration)
+6. **📊 Trading Dashboard**: Real-time trade tracking with rolling history table
 
 ---
 
@@ -27,58 +29,125 @@ A comprehensive quantitative investing framework implementing **Dual Momentum + 
 
 ```
 webapp/
-├── strategy/
-│   ├── __init__.py          # Package initialization
-│   ├── config.py             # Strategy configuration
-│   ├── data_loader.py        # Data fetching + AUD normalization
-│   ├── signals.py            # Momentum signal generation
-│   ├── optimizer.py          # Riskfolio-Lib portfolio optimization
-│   ├── backtest.py           # vectorbt backtesting framework
-│   ├── main.py               # Main execution script
-│   └── research_notes.md     # Strategy documentation
-├── requirements.txt          # Python dependencies
-└── README.md                 # This file
+├── strategy/                    # Quant Strategy Engine
+│   ├── __init__.py
+│   ├── config.py                # Strategy configuration
+│   ├── data_loader.py           # Data fetching + AUD normalization
+│   ├── signals.py               # Momentum signal generation
+│   ├── optimizer.py             # Riskfolio-Lib portfolio optimization
+│   ├── backtest.py              # vectorbt backtesting framework
+│   ├── main.py                  # Main execution script
+│   └── research_notes.md        # Strategy documentation
+│
+├── backend/                     # FastAPI REST API
+│   ├── main.py                  # API entry point
+│   ├── config.py                # Backend settings
+│   ├── database/
+│   │   ├── models.py            # SQLAlchemy ORM models
+│   │   ├── schemas.py           # Pydantic DTOs
+│   │   └── connection.py        # DB session management
+│   ├── repositories/
+│   │   └── trade_repository.py  # Data access layer
+│   ├── services/
+│   │   └── trade_service.py     # Business logic
+│   ├── routers/
+│   │   └── trades.py            # API endpoints
+│   └── seed_data.py             # Sample data generator
+│
+├── dashboard/                   # React Frontend Dashboard
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── api/trades.ts        # API client
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── components/          # UI components
+│   │   └── types/trade.ts       # TypeScript interfaces
+│   ├── package.json
+│   └── tailwind.config.js
+│
+├── data/
+│   └── trades.db                # SQLite database
+│
+└── requirements.txt             # Python dependencies
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
+### Backend Setup
 
 ```bash
-# Clone or navigate to project
+# Navigate to project
 cd /home/user/webapp
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Run the strategy
-python strategy/main.py --portfolio-value 100000
+# Seed sample data
+python -m backend.seed_data
+
+# Start API server
+python -m backend.main
+# API available at http://localhost:8000
+# Docs at http://localhost:8000/docs
 ```
 
-### Basic Usage
+### Frontend Setup
 
-```python
-from strategy import QuantStrategy
+```bash
+# Navigate to dashboard
+cd dashboard
 
-# Initialize with $100,000 AUD portfolio
-strategy = QuantStrategy(portfolio_value=100000)
+# Install Node dependencies
+npm install
 
-# Run full pipeline
-recommendations = strategy.run_full_pipeline()
+# Start development server
+npm run dev
+# Dashboard available at http://localhost:3000
+```
 
-# Or step by step:
-strategy.load_data()
-strategy.generate_signals()
-strategy.optimize_portfolio(method='hrp')
-strategy.analyze_costs(expected_alpha=0.02)
-strategy.run_backtest(strategy='dual_momentum')
+### Run Strategy
+
+```bash
+# Run full strategy pipeline
+python strategy/main.py --portfolio-value 100000
+
+# Quick demo
+python strategy/main.py --demo
 ```
 
 ---
 
-## 📊 Strategy Components
+## 📊 Dashboard Features
+
+### Trade History Table
+- **Rolling history** of all executed trades
+- **Sortable columns**: Date, Ticker, P&L, Status
+- **Filterable**: By ticker, status, strategy, date range
+- **Paginated**: Efficient handling of large trade volumes
+
+### Portfolio Metrics
+- Total Value / Cash Balance / Invested Value
+- Total P&L / Win Rate / Trade Count
+- Period P&L: Today / Week / Month
+- Best/Worst Trade statistics
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/trades/` | List trades (paginated) |
+| POST | `/api/trades/` | Create new trade |
+| GET | `/api/trades/{id}` | Get single trade |
+| PATCH | `/api/trades/{id}` | Update trade |
+| POST | `/api/trades/{id}/close` | Close trade |
+| DELETE | `/api/trades/{id}` | Delete trade |
+| GET | `/api/trades/metrics/portfolio` | Portfolio metrics |
+| GET | `/api/trades/metrics/dashboard` | Dashboard summary |
+
+---
+
+## 📈 Strategy Components
 
 ### 1. Universe Selection
 
@@ -107,35 +176,33 @@ Composite: Asset must pass BOTH filters
 - Natural diversification via hierarchical clustering
 - Constraints: Min 5%, Max 25% per asset
 
-### 4. Cost-Benefit Gate
+### 4. Cost Model
 
 ```
-Execute Trade IF:
-    Expected Alpha > FX Cost (70bps × 2) + Tax Drag
-
-Threshold for US ETFs: ~2% annual alpha required
-Threshold for ASX ETFs: ~0.1% (just $3 brokerage)
+Trade Fee: $3 AUD per trade (flat)
+No FX fees in backtest model
 ```
 
 ---
 
 ## 📈 Expected Performance
 
-Based on historical backtests (2010-2024):
+Based on historical backtests (2020-2024):
 
-| Metric | Target | Benchmark (60/40) |
-|--------|--------|-------------------|
-| CAGR | 8-12% | 7-9% |
-| Volatility | 10-14% | 10-12% |
-| Sharpe Ratio | 0.6-0.9 | 0.5-0.7 |
-| Max Drawdown | 15-25% | 20-30% |
-| Turnover | 20-40%/yr | N/A |
+| Metric | Result |
+|--------|--------|
+| CAGR | 21.45% |
+| Volatility | 20.76% |
+| Sharpe Ratio | 0.847 |
+| Max Drawdown | -25.87% |
+| Win Rate | 52.8% |
+| Total Trading Costs | $90 (30 rebalances) |
 
 ---
 
 ## 🔧 Configuration
 
-Edit `strategy/config.py` to customize:
+### Strategy Config (`strategy/config.py`)
 
 ```python
 # Momentum parameters
@@ -145,27 +212,47 @@ LOOKBACK_DAYS = 252  # 12 months
 MIN_WEIGHT = 0.05    # 5% minimum
 MAX_WEIGHT = 0.25    # 25% maximum
 
-# Cost parameters (Stake.com)
-FX_FEE_BPS = 70      # 70 basis points
+# Cost parameters
+TRADE_FEE_AUD = 3.0  # $3 per trade
+```
 
-# Risk management
-VOLATILITY_TARGET = 0.12  # 12% annual
+### Backend Config (`backend/config.py`)
+
+```python
+# Server
+HOST = "0.0.0.0"
+PORT = 8000
+
+# Database
+DATABASE_URL = "sqlite:///./data/trades.db"
+
+# Pagination
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
 ```
 
 ---
 
-## 🧪 Running Backtests
+## 📚 Tech Stack
 
-```bash
-# Full backtest
-python strategy/main.py --start-date 2015-01-01 --strategy dual_momentum
+### Backend
+- **FastAPI** - Modern Python web framework
+- **SQLAlchemy** - ORM for database operations
+- **Pydantic** - Data validation
+- **SQLite** - Lightweight database
 
-# Quick demo
-python strategy/main.py --demo
+### Frontend
+- **React 18** - UI library
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Utility-first styling
+- **Recharts** - Chart library
+- **Axios** - HTTP client
 
-# Compare strategies
-python strategy/backtest.py
-```
+### Quant Engine
+- **yfinance** - Market data
+- **pandas-ta** - Technical indicators
+- **Riskfolio-Lib** - Portfolio optimization
+- **vectorbt** - Backtesting
 
 ---
 
@@ -196,4 +283,6 @@ MIT License - See LICENSE file for details.
 
 ## 🔄 Version History
 
+- **v1.1.0** (2024-12): Added Trading Dashboard with FastAPI backend and React frontend
+- **v1.0.1** (2024-12): Updated trade fees to $3 AUD flat fee per trade
 - **v1.0.0** (2024-12): Initial release with Dual Momentum + HRP
