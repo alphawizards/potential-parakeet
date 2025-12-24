@@ -1,6 +1,17 @@
 # Quantitative Global Investing Strategy
 # Requirements for Australian Retail Investors
 
+# ============== BACKEND API ==============
+# FastAPI & Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# ============== QUANT STRATEGY ==============
 # Data Ingestion
 yfinance>=0.2.36
 pandas>=2.0.0
