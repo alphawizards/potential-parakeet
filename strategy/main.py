@@ -17,6 +17,7 @@ License: MIT
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from typing import List, Optional
 import warnings
 import argparse
 import sys
@@ -25,11 +26,14 @@ from pathlib import Path
 # Add parent directory to path for standalone execution
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from strategy.config import CONFIG, BACKTEST_CONFIG, get_us_tickers, get_asx_tickers
+from strategy.config import (
+    CONFIG, BACKTEST_CONFIG, get_us_tickers, get_asx_tickers, get_screener_universe
+)
 from strategy.data_loader import DataLoader
 from strategy.signals import MomentumSignals, CompositeSignal
 from strategy.optimizer import PortfolioOptimizer, CostAwareOptimizer
 from strategy.backtest import PortfolioBacktester, VectorBTBacktester
+from strategy.quallamaggie import QuallamaggieScreener
 
 warnings.filterwarnings('ignore')
 
@@ -416,6 +420,104 @@ class QuantStrategy:
         return recommendations
 
 
+def run_quallamaggie_screener(
+    tickers: List[str] = None,
+    start_date: str = None,
+    min_adr: float = 4.0,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Run the Quallamaggie momentum screener.
+    
+    This screener filters a universe of high-beta stocks to identify those
+    with strong technical setups suitable for swing trading.
+    
+    Screening Criteria:
+    1. Trend Template: Price > SMA(10) > SMA(20) > SMA(50), Price > SMA(200)
+    2. 52-Week Position: Within 25% of high, > 30% above low
+    3. ADR: Average Daily Range > min_adr (default 4%)
+    4. Momentum: Positive returns over 1m, 3m, 6m
+    
+    Args:
+        tickers: List of tickers to screen (default: SCREENER_UNIVERSE from config)
+        start_date: Start date for data (default: 2 years ago)
+        min_adr: Minimum ADR percentage (default: 4.0%)
+        verbose: Print detailed output (default: True)
+        
+    Returns:
+        pd.DataFrame: Shortlist of tickers passing all criteria
+    """
+    # Use default screener universe if not provided
+    if tickers is None:
+        tickers = get_screener_universe()
+    
+    # Default to 2 years of data for 52-week calculations
+    if start_date is None:
+        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+    
+    if verbose:
+        print("\n" + "=" * 70)
+        print("QUALLAMAGGIE MOMENTUM SCREENER")
+        print("=" * 70)
+        print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        print(f"Universe: {len(tickers)} tickers")
+        print(f"Min ADR: {min_adr}%")
+        print(f"Data Period: {start_date} to today")
+        print("=" * 70)
+    
+    # Initialize data loader
+    loader = DataLoader(start_date=start_date)
+    
+    # Fetch OHLC data (raw USD for screening - no AUD conversion needed)
+    if verbose:
+        print("\n[1/3] Fetching OHLC data...")
+    
+    ohlc_data = loader.fetch_ohlc(tickers, convert_to_aud=False)
+    
+    if not ohlc_data:
+        print("Error: No OHLC data available")
+        return pd.DataFrame()
+    
+    # Initialize screener
+    if verbose:
+        print(f"\n[2/3] Running screener on {len(ohlc_data)} tickers...")
+    
+    screener = QuallamaggieScreener(
+        ohlc_data=ohlc_data,
+        min_adr=min_adr,
+        max_dist_from_high=25.0,
+        min_dist_from_low=30.0
+    )
+    
+    # Run screening
+    shortlist_df = screener.get_shortlist_dataframe()
+    
+    # Print results
+    if verbose:
+        print("\n[3/3] Results")
+        print("=" * 70)
+        
+        if shortlist_df.empty:
+            print("\n⚠️  No tickers passed all screening criteria.")
+            print("\nTry adjusting parameters:")
+            print("  - Lower min_adr (e.g., --min-adr 3)")
+            print("  - Check market conditions (bear markets reduce passing stocks)")
+        else:
+            print(f"\n✓ {len(shortlist_df)} tickers passed all criteria:\n")
+            print(shortlist_df.to_string(index=False))
+            
+            print("\n" + "-" * 70)
+            print("LEGEND:")
+            print("  ADR%      = Average Daily Range (volatility)")
+            print("  Volume($M)= 20-day avg dollar volume")
+            print("  1M/3M/6M% = Momentum over period")
+            print("  Dist High = Distance from 52-week high")
+            print("  Trend     = Passes SMA trend template")
+            print("-" * 70)
+    
+    return shortlist_df
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -442,9 +544,15 @@ def main():
     parser.add_argument(
         '--strategy',
         type=str,
-        choices=['dual_momentum', 'momentum', 'equal_weight'],
+        choices=['dual_momentum', 'momentum', 'equal_weight', 'quallamaggie'],
         default='dual_momentum',
-        help='Strategy to backtest (default: dual_momentum)'
+        help='Strategy to run (default: dual_momentum). Use "quallamaggie" for screener mode.'
+    )
+    parser.add_argument(
+        '--min-adr',
+        type=float,
+        default=4.0,
+        help='Minimum ADR%% for Quallamaggie screener (default: 4.0)'
     )
     parser.add_argument(
         '--demo',
@@ -454,6 +562,16 @@ def main():
     
     args = parser.parse_args()
     
+    # Run Quallamaggie screener mode
+    if args.strategy == 'quallamaggie':
+        run_quallamaggie_screener(
+            start_date=args.start_date if args.start_date != '2015-01-01' else None,
+            min_adr=args.min_adr,
+            verbose=True
+        )
+        return
+    
+    # Run standard strategies
     if args.demo:
         print("Running demo with sample data...")
         # Demo with subset of data

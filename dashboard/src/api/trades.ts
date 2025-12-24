@@ -16,8 +16,18 @@ import type {
   TradeFilters,
 } from '../types/trade';
 
-// API base URL - uses proxy in development
-const API_BASE_URL = '/api/trades';
+// API base URL - detect environment and use appropriate URL
+const getApiBaseUrl = () => {
+  // In sandbox/preview mode, use the backend directly
+  if (typeof window !== 'undefined' && window.location.hostname.includes('sandbox.novita.ai')) {
+    const backendHost = window.location.hostname.replace('3000-', '8000-');
+    return `https://${backendHost}/api/trades`;
+  }
+  // In local development, use Vite proxy
+  return '/api/trades';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance with defaults
 const apiClient: AxiosInstance = axios.create({

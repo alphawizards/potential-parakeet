@@ -54,6 +54,61 @@ class StrategyConfig:
         "TLT", "IEF", "VAF.AX", "BIL"  # BIL = T-Bills for risk-free proxy
     ])
     
+    # ========== SCREENER UNIVERSE ==========
+    # High-beta tickers for Quallamaggie-style momentum screening
+    # These are typically high-growth, volatile stocks suitable for swing trading
+    SCREENER_UNIVERSE: List[str] = field(default_factory=lambda: [
+        # Mega-cap Tech Leaders
+        "NVDA",   # NVIDIA - AI/GPU leader
+        "AMD",    # AMD - Semiconductor
+        "TSLA",   # Tesla - EV/Energy
+        "META",   # Meta Platforms - Social/AI
+        "GOOGL",  # Alphabet - Search/Cloud
+        "AMZN",   # Amazon - E-commerce/Cloud
+        "MSFT",   # Microsoft - Cloud/Enterprise
+        "AAPL",   # Apple - Consumer Tech
+        
+        # High-Growth Tech
+        "PLTR",   # Palantir - Data Analytics/AI
+        "COIN",   # Coinbase - Crypto Exchange
+        "MSTR",   # MicroStrategy - Bitcoin Treasury
+        "NET",    # Cloudflare - Edge Computing
+        "CRWD",   # CrowdStrike - Cybersecurity
+        "SNOW",   # Snowflake - Cloud Data
+        "DDOG",   # Datadog - Monitoring
+        "ZS",     # Zscaler - Security
+        
+        # Semiconductor
+        "AVGO",   # Broadcom - Chips
+        "MU",     # Micron - Memory
+        "MRVL",   # Marvell - Chips
+        "AMAT",   # Applied Materials - Equipment
+        "LRCX",   # Lam Research - Equipment
+        "KLAC",   # KLA Corp - Equipment
+        "ARM",    # Arm Holdings - IP
+        
+        # EV/Clean Energy
+        "RIVN",   # Rivian - EV
+        "LCID",   # Lucid - EV
+        "ENPH",   # Enphase - Solar
+        "FSLR",   # First Solar - Solar
+        
+        # Biotech (High Beta)
+        "MRNA",   # Moderna - mRNA
+        "VRTX",   # Vertex - Biotech
+        
+        # Fintech/Payments
+        "XYZ",    # Block Inc (formerly SQ/Square)
+        "AFRM",   # Affirm - BNPL
+        "UPST",   # Upstart - AI Lending
+        
+        # E-commerce/Consumer
+        "SHOP",   # Shopify
+        "ABNB",   # Airbnb
+        "UBER",   # Uber
+        "DASH",   # DoorDash
+    ])
+    
     # ========== MOMENTUM PARAMETERS ==========
     LOOKBACK_DAYS: int = 252  # 12 months (trading days)
     LOOKBACK_DAYS_SHORT: int = 21  # 1 month for short-term momentum
@@ -133,3 +188,8 @@ def get_fx_cost(ticker: str, trade_value_aud: float) -> float:
         return trade_value_aud * (CONFIG.FX_FEE_BPS / 10000) * 2  # Round trip
     else:
         return CONFIG.ASX_BROKERAGE_AUD  # Flat fee for ASX
+
+
+def get_screener_universe() -> List[str]:
+    """Get the screener universe tickers for Quallamaggie screening."""
+    return CONFIG.SCREENER_UNIVERSE

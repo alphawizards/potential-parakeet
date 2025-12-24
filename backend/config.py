@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./data/trades.db"
     
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"]
+    # CORS (allow all origins for sandbox preview)
+    CORS_ORIGINS: list[str] = ["*"]
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 50
