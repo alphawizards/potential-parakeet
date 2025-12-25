@@ -27,7 +27,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from strategy.config import CONFIG, BACKTEST_CONFIG, get_us_tickers, get_asx_tickers
 from strategy.data_loader import DataLoader
-from strategy.signals import MomentumSignals, CompositeSignal
+
+# Optional imports - require pandas_ta which needs Python >= 3.12
+try:
+    from strategy.signals import MomentumSignals, CompositeSignal
+    HAS_SIGNALS = True
+except ImportError:
+    MomentumSignals = None
+    CompositeSignal = None
+    HAS_SIGNALS = False
+
 from strategy.optimizer import PortfolioOptimizer, CostAwareOptimizer
 from strategy.backtest import PortfolioBacktester, VectorBTBacktester
 

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Plain API key (dev fallback only)
     API_KEY: str = "dev-key-change-me"
     # Comma-separated CORS origins
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8080,http://127.0.0.1:8080"
     
     # ============== TRADING ==============
     RISK_FREE_RATE: float = 0.04

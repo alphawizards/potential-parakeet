@@ -20,7 +20,15 @@ Usage:
 
 from .config import CONFIG, BACKTEST_CONFIG
 from .data_loader import DataLoader
-from .signals import MomentumSignals, TechnicalSignals, CompositeSignal
+
+# Optional imports - require pandas_ta which needs Python >= 3.12
+try:
+    from .signals import MomentumSignals, TechnicalSignals, CompositeSignal
+except ImportError:
+    MomentumSignals = None
+    TechnicalSignals = None
+    CompositeSignal = None
+
 from .optimizer import PortfolioOptimizer, CostAwareOptimizer
 from .backtest import PortfolioBacktester, VectorBTBacktester
 from .main import QuantStrategy
