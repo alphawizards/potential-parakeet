@@ -7,7 +7,20 @@ Usage:
     python run_pipeline.py scan
     python run_pipeline.py scan --strategy Dual_Momentum
     python run_pipeline.py list
+
+⚠️ DEPRECATED: This file will be removed in the next release.
+   Use 'python -m strategy.pipeline.cli scan' instead.
 """
+
+import warnings
+warnings.warn(
+    "\n\n"
+    "⚠️  DEPRECATION WARNING ⚠️\n"
+    "run_pipeline.py is deprecated and will be removed in the next release.\n"
+    "Please use 'python -m strategy.pipeline.cli scan' instead.\n",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import sys
 import os
