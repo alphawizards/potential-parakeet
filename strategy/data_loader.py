@@ -23,6 +23,25 @@ from .config import CONFIG, get_us_tickers, get_asx_tickers, is_us_ticker
 
 warnings.filterwarnings('ignore')
 
+# Nasdaq-100 tickers for OLMAR strategy universe
+NASDAQ_100_TICKERS = [
+    'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'GOOG', 'AVGO', 'COST',
+    'PEP', 'CSCO', 'ADBE', 'NFLX', 'AMD', 'CMCSA', 'TMUS', 'INTC', 'INTU', 'QCOM',
+    'TXN', 'AMGN', 'ISRG', 'HON', 'AMAT', 'BKNG', 'SBUX', 'VRTX', 'LRCX', 'ADP',
+    'GILD', 'MDLZ', 'ADI', 'REGN', 'PANW', 'PYPL', 'KLAC', 'SNPS', 'MU', 'CDNS',
+    'MELI', 'CSX', 'MAR', 'ORLY', 'MNST', 'ASML', 'CRWD', 'NXPI', 'CTAS', 'PCAR',
+    'LULU', 'MRVL', 'AEP', 'WDAY', 'KDP', 'PAYX', 'FTNT', 'CHTR', 'CPRT', 'ADSK',
+    'EXC', 'ROST', 'KHC', 'MRNA', 'AZN', 'DXCM', 'ODFL', 'IDXX', 'FAST', 'CTSH',
+    'EA', 'VRSK', 'XEL', 'GEHC', 'ON', 'CSGP', 'BKR', 'CCEP', 'ANSS', 'FANG',
+    'BIIB', 'CEG', 'CDW', 'TTWO', 'DDOG', 'WBD', 'ZS', 'TEAM', 'GFS', 'ILMN',
+    'ALGN', 'WBA', 'ENPH', 'SIRI', 'LCID', 'RIVN', 'JD', 'PDD', 'BIDU', 'ZM'
+]
+
+
+def get_nasdaq_100_tickers() -> List[str]:
+    """Get Nasdaq-100 tickers for extended universe."""
+    return NASDAQ_100_TICKERS.copy()
+
 
 class DataLoader:
     """
