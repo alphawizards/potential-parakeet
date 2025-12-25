@@ -1,0 +1,70 @@
+{
+  "generated_at": "2025-12-25T09:59:02.586611",
+  "config": {
+    "start_date": "2020-01-01",
+    "end_date": "2025-12-25",
+    "initial_capital": 100000.0
+  },
+  "strategies": {
+    "Momentum_1M": {
+      "final_value": 44353025.0975501,
+      "metrics": {
+        "CAGR": "177.84%",
+        "Sharpe Ratio": "4.796",
+        "Sortino Ratio": "7.454",
+        "Volatility": "20.97%",
+        "Max Drawdown": "-11.09%",
+        "Calmar Ratio": "16.032",
+        "Win Rate": "63.5%"
+      }
+    },
+    "Momentum_3M": {
+      "final_value": 3777003.204274168,
+      "metrics": {
+        "CAGR": "83.84%",
+        "Sharpe Ratio": "2.847",
+        "Sortino Ratio": "3.967",
+        "Volatility": "20.77%",
+        "Max Drawdown": "-17.99%",
+        "Calmar Ratio": "4.661",
+        "Win Rate": "57.4%"
+      }
+    },
+    "Momentum_6M": {
+      "final_value": 2199918.174378589,
+      "metrics": {
+        "CAGR": "67.91%",
+        "Sharpe Ratio": "2.377",
+        "Sortino Ratio": "3.396",
+        "Volatility": "21.07%",
+        "Max Drawdown": "-14.14%",
+        "Calmar Ratio": "4.802",
+        "Win Rate": "53.7%"
+      }
+    },
+    "Dual_Momentum": {
+      "final_value": 905935.7370086232,
+      "metrics": {
+        "CAGR": "44.70%",
+        "Sharpe Ratio": "1.155",
+        "Sortino Ratio": "1.500",
+        "Volatility": "33.37%",
+        "Max Drawdown": "-41.49%",
+        "Calmar Ratio": "1.077",
+        "Win Rate": "46.2%"
+      }
+    },
+    "HRP": {
+      "final_value": 200873.13183232155,
+      "metrics": {
+        "CAGR": "12.41%",
+        "Sharpe Ratio": "0.523",
+        "Sortino Ratio": "0.644",
+        "Volatility": "17.74%",
+        "Max Drawdown": "-30.03%",
+        "Calmar Ratio": "0.413",
+        "Win Rate": "54.2%"
+      }
+    }
+  }
+}
