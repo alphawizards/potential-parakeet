@@ -26,6 +26,12 @@ riskfolio-lib>=6.0.0
 # High-Performance Backtesting
 vectorbt>=0.26.0
 
+# Hyperparameter Optimization
+optuna>=3.0.0
+
+# Parquet Data Caching
+pyarrow>=14.0.0
+
 # Statistical Analysis
 scipy>=1.10.0
 statsmodels>=0.14.0

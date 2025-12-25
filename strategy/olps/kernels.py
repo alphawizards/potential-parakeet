@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from typing import Union, Tuple
 import warnings
+from scipy.stats import norm, skew, kurtosis
 
 
 def calculate_price_relatives(
@@ -78,6 +79,37 @@ def predict_ma_reversion(
     # Predict next price relative
     # x̃_{t+1} = MA(p_t) / p_t
     prediction = ma / prices
+    
+    # Handle edge cases
+    prediction = prediction.replace([np.inf, -np.inf], np.nan)
+    prediction = prediction.fillna(1.0)  # Neutral prediction if no data
+    
+    return prediction
+
+
+def predict_ema_reversion(
+    prices: pd.DataFrame,
+    span: int = 5
+) -> pd.DataFrame:
+    """
+    Predict next price relative using EXPONENTIAL moving average reversion.
+    
+    Same as predict_ma_reversion but uses EMA instead of SMA.
+    EMA gives more weight to recent prices, making it more responsive.
+    
+    Args:
+        prices: DataFrame of asset prices
+        span: EMA span parameter (similar to window, default: 5)
+        
+    Returns:
+        pd.DataFrame: Predicted price relatives
+    """
+    # Calculate exponential moving average
+    ema = prices.ewm(span=span, min_periods=1, adjust=False).mean()
+    
+    # Predict next price relative
+    # x̃_{t+1} = EMA(p_t) / p_t
+    prediction = ema / prices
     
     # Handle edge cases
     prediction = prediction.replace([np.inf, -np.inf], np.nan)
@@ -246,6 +278,67 @@ def olmar_weights(
     return weights_df
 
 
+def olmar_weights_ema(
+    prices: pd.DataFrame,
+    span: int = 5,
+    epsilon: float = 10.0,
+    initial_weights: np.ndarray = None
+) -> pd.DataFrame:
+    """
+    Calculate OLMAR portfolio weights using EMA (Exponential Moving Average).
+    
+    This is the EMA variant of OLMAR. Uses exponential moving average
+    instead of simple moving average for more responsive predictions.
+    
+    Args:
+        prices: DataFrame of asset prices (rows=dates, cols=assets)
+        span: EMA span parameter (similar to SMA window)
+        epsilon: Sensitivity parameter (higher = more aggressive rebalancing)
+        initial_weights: Starting weights (default: equal weight)
+        
+    Returns:
+        pd.DataFrame: Portfolio weights over time (same index as prices)
+    """
+    n_assets = len(prices.columns)
+    n_periods = len(prices)
+    
+    # Initialize weights
+    if initial_weights is None:
+        weights = np.ones(n_assets) / n_assets
+    else:
+        weights = initial_weights.copy()
+    
+    # Storage for weight history
+    weights_history = np.zeros((n_periods, n_assets))
+    weights_history[0] = weights
+    
+    # Get EMA-based predictions for each period
+    predictions = predict_ema_reversion(prices, span)
+    
+    # Run OLMAR update at each timestep
+    for t in range(1, n_periods):
+        # Get prediction for this period
+        pred = predictions.iloc[t].values
+        
+        # Skip if prediction has NaN
+        if np.any(np.isnan(pred)):
+            weights_history[t] = weights
+            continue
+        
+        # Update weights
+        weights = olmar_update(weights, pred, epsilon)
+        weights_history[t] = weights
+    
+    # Convert to DataFrame
+    weights_df = pd.DataFrame(
+        weights_history,
+        index=prices.index,
+        columns=prices.columns
+    )
+    
+    return weights_df
+
+
 def validate_weights(weights: Union[np.ndarray, pd.Series]) -> Tuple[bool, str]:
     """
     Validate that weights satisfy simplex constraints.
@@ -274,3 +367,40 @@ def validate_weights(weights: Union[np.ndarray, pd.Series]) -> Tuple[bool, str]:
         return False, "Weights contain NaN or Inf"
     
     return True, "Valid"
+
+
+def calculate_dsr(returns: pd.Series, total_trials: int = 1) -> float:
+    """
+    Calculates Deflated Sharpe Ratio (DSR) to validate strategy robustness.
+    Required by 2025 Framework to penalize 'p-hacking'.
+    
+    Args:
+        returns: Series of portfolio returns
+        total_trials: Number of parameter combinations tested
+        
+    Returns:
+        float: DSR value (0-1 probability that true Sharpe > 0)
+    """
+    # 1. Standard Metrics
+    T = len(returns)
+    sr_obs = returns.mean() / returns.std() * np.sqrt(252)
+    sk = skew(returns)
+    kt = kurtosis(returns)
+    
+    # 2. Estimate Expected Maximum Sharpe (from noise)
+    # Euler-Mascheroni constant
+    gamma = 0.57721566
+    
+    # Expected Max Sharpe from N independent trials
+    # simplified approx for N > 1
+    if total_trials <= 1:
+        sr_expected = 0
+    else:
+        sr_expected = ((1 - gamma) * norm.ppf(1 - 1/total_trials) + 
+                       gamma * norm.ppf(1 - 1/(total_trials * np.e)))
+    
+    # 3. Deflate the Sharpe Ratio
+    numerator = (sr_obs - sr_expected) * np.sqrt(T - 1)
+    denominator = np.sqrt(1 - sk * sr_obs + ((kt - 1) / 4) * sr_obs**2)
+    
+    return norm.cdf(numerator / denominator)

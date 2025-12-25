@@ -2,6 +2,12 @@
 SQLAlchemy ORM Models
 =====================
 Database models for trade tracking and portfolio snapshots.
+
+2025 Bi-Temporal Schema:
+- knowledge_timestamp: When the system learned about this data
+- event_timestamp: When the event actually occurred
+
+This enables Point-in-Time (PIT) queries for accurate backtesting.
 """
 
 from sqlalchemy import (
@@ -79,11 +85,19 @@ class Trade(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
+    # Bi-Temporal Timestamps (2025 Standard)
+    # knowledge_timestamp: When we learned about this trade (system time)
+    # event_timestamp: When the trade actually occurred (business time)
+    knowledge_timestamp = Column(DateTime, server_default=func.now(), nullable=False)
+    event_timestamp = Column(DateTime, nullable=True)  # Same as entry_date for trades
+    
     # Composite indexes for common queries
     __table_args__ = (
         Index('ix_trades_ticker_date', 'ticker', 'entry_date'),
         Index('ix_trades_strategy_status', 'strategy_name', 'status'),
         Index('ix_trades_date_range', 'entry_date', 'exit_date'),
+        # Index for Point-in-Time queries
+        Index('ix_trades_bitemporal', 'knowledge_timestamp', 'event_timestamp'),
     )
     
     def calculate_pnl(self) -> None:
@@ -133,8 +147,14 @@ class PortfolioSnapshot(Base):
     # Metadata
     created_at = Column(DateTime, server_default=func.now())
     
+    # Bi-Temporal Timestamps (2025 Standard)
+    knowledge_timestamp = Column(DateTime, server_default=func.now(), nullable=False)
+    event_timestamp = Column(DateTime, nullable=True)  # Same as snapshot_date
+    
     __table_args__ = (
         Index('ix_snapshot_date', 'snapshot_date'),
+        # Index for Point-in-Time queries
+        Index('ix_snapshot_bitemporal', 'knowledge_timestamp', 'event_timestamp'),
     )
     
     def __repr__(self) -> str:
