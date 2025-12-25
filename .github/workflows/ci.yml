@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov ruff bandit safety
+      
+      - name: Lint with Ruff
+        run: ruff check . --output-format=github
+      
+      - name: Run tests
+        run: pytest tests/ -v --cov=strategy.pipeline --cov=backend --cov-fail-under=50
+        env:
+          API_KEY: test-key
+          CORS_ORIGINS: http://localhost:3000
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install security tools
+        run: pip install bandit safety
+      
+      - name: Run Bandit security scan
+        run: bandit -r strategy/ backend/ -ll --skip B101
+      
+      - name: Check dependencies for vulnerabilities
+        run: safety check -r requirements.txt --output bare || true

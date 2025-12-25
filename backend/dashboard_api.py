@@ -2,42 +2,97 @@
 Dashboard API
 ==============
 FastAPI backend for the trading dashboard.
+
+Security features:
+- Rate limiting (slowapi)
+- API key authentication with SHA256 hashing
+- CORS restriction from environment
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+import hashlib
+import secrets
+from functools import lru_cache
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel, validator
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import json
 from pathlib import Path
 
-# Import pipeline
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Import pipeline and config
 from strategy.pipeline.pipeline import TradingPipeline, PipelineConfig, run_daily_scan
 from strategy.pipeline.reporting_layer import ReportingManager
+from strategy.pipeline.config import settings
 
+
+# ============== Rate Limiting ==============
+limiter = Limiter(key_func=get_remote_address)
 
 # Create FastAPI app
 app = FastAPI(
     title="Trading Dashboard API",
     description="API for the Quantitative Trading Pipeline Dashboard",
-    version="1.0.0"
+    version="2.0.0"
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS for frontend
+# CORS from environment config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"]
 )
 
-# Global pipeline instance
-pipeline: Optional[TradingPipeline] = None
-last_scan_time: Optional[datetime] = None
-cached_results: Dict[str, Any] = {}
+
+# ============== Authentication ==============
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def verify_api_key(api_key: str) -> bool:
+    """Verify API key using constant-time comparison to prevent timing attacks."""
+    if not api_key:
+        return False
+    
+    # Prefer hashed comparison
+    if settings.API_KEY_HASH:
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        return secrets.compare_digest(key_hash, settings.API_KEY_HASH)
+    
+    # Fallback to plain comparison (dev only)
+    return secrets.compare_digest(api_key, settings.API_KEY)
+
+
+async def require_api_key(api_key: str = Depends(api_key_header)) -> str:
+    """Dependency that requires valid API key."""
+    if not verify_api_key(api_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
+
+# ============== State Management ==============
+class PipelineState:
+    """Application state container (replaces global variables)."""
+    def __init__(self):
+        self.pipeline: Optional[TradingPipeline] = None
+        self.last_scan_time: Optional[datetime] = None
+        self.cached_results: Dict[str, Any] = {}
+
+
+@lru_cache()
+def get_pipeline_state() -> PipelineState:
+    """Get singleton pipeline state."""
+    return PipelineState()
 
 
 # ============== Models ==============
@@ -45,6 +100,15 @@ cached_results: Dict[str, Any] = {}
 class ScanRequest(BaseModel):
     strategies: Optional[List[str]] = None
     start_date: Optional[str] = "2020-01-01"
+    
+    @validator('start_date')
+    def validate_date_format(cls, v):
+        """Validate date format is YYYY-MM-DD."""
+        try:
+            datetime.strptime(v, '%Y-%m-%d')
+            return v
+        except ValueError:
+            raise ValueError('Invalid date format. Use YYYY-MM-DD')
     
 
 class StrategyMetrics(BaseModel):
@@ -73,30 +137,38 @@ class DashboardData(BaseModel):
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
+    """Health check endpoint (no auth required)."""
     return {
         "status": "healthy",
         "service": "Trading Dashboard API",
-        "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
+        "version": "2.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "security": "enabled"
     }
 
 
 @app.get("/api/dashboard")
-async def get_dashboard_data() -> Dict[str, Any]:
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+async def get_dashboard_data(
+    request: Request,
+    state: PipelineState = Depends(get_pipeline_state),
+    _: str = Depends(require_api_key)
+) -> Dict[str, Any]:
     """
     Get dashboard data including all strategy metrics.
+    Requires API key authentication.
     """
-    global cached_results
-    
-    if not cached_results:
+    if not state.cached_results:
         # Try to load from file
         results_file = Path("reports/pipeline_results.json")
         if results_file.exists():
-            with open(results_file) as f:
-                cached_results = json.load(f)
+            try:
+                with open(results_file) as f:
+                    state.cached_results = json.load(f)
+            except json.JSONDecodeError:
+                raise HTTPException(500, "Corrupted results file")
     
-    if not cached_results:
+    if not state.cached_results:
         return {
             "last_updated": None,
             "strategies": [],
@@ -106,48 +178,51 @@ async def get_dashboard_data() -> Dict[str, Any]:
         }
     
     return {
-        "last_updated": cached_results.get('generated_at'),
-        "strategies": list(cached_results.get('strategies', {}).values()),
-        "comparison_table": _format_comparison_table(cached_results),
-        "config": cached_results.get('config', {})
+        "last_updated": state.cached_results.get('generated_at'),
+        "strategies": list(state.cached_results.get('strategies', {}).values()),
+        "comparison_table": _format_comparison_table(state.cached_results),
+        "config": state.cached_results.get('config', {})
     }
 
 
 @app.post("/api/scan")
+@limiter.limit(settings.RATE_LIMIT_SCAN)
 async def run_scan(
-    request: ScanRequest,
-    background_tasks: BackgroundTasks
+    request: Request,
+    scan_request: ScanRequest,
+    state: PipelineState = Depends(get_pipeline_state),
+    _: str = Depends(require_api_key)
 ) -> Dict[str, Any]:
     """
-    Run a strategy scan (can be run in background).
+    Run a strategy scan.
+    Requires API key authentication.
+    Rate limited to 5 requests per minute.
     """
-    global pipeline, last_scan_time, cached_results
-    
     # Initialize pipeline
     config = PipelineConfig(
-        start_date=request.start_date
+        start_date=scan_request.start_date
     )
-    pipeline = TradingPipeline(config)
+    state.pipeline = TradingPipeline(config)
     
     try:
-        if request.strategies:
+        if scan_request.strategies:
             # Run specific strategies
-            for strategy in request.strategies:
-                pipeline.run(strategy)
+            for strategy in scan_request.strategies:
+                state.pipeline.run(strategy)
         else:
             # Run all strategies
-            pipeline.run_all_strategies()
+            state.pipeline.run_all_strategies()
         
         # Save results
-        pipeline.save_results()
-        cached_results = pipeline.export_results_json()
-        last_scan_time = datetime.now()
+        state.pipeline.save_results()
+        state.cached_results = state.pipeline.export_results_json()
+        state.last_scan_time = datetime.now()
         
         return {
             "status": "success",
-            "message": f"Scan completed for {len(pipeline._results)} strategies",
-            "timestamp": last_scan_time.isoformat(),
-            "strategies": list(pipeline._results.keys())
+            "message": f"Scan completed for {len(state.pipeline._results)} strategies",
+            "timestamp": state.last_scan_time.isoformat(),
+            "strategies": list(state.pipeline._results.keys())
         }
         
     except Exception as e:
@@ -155,14 +230,18 @@ async def run_scan(
 
 
 @app.get("/api/strategies")
-async def get_strategies() -> Dict[str, Any]:
-    """Get list of available strategies."""
-    if pipeline is None:
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+async def get_strategies(
+    request: Request,
+    state: PipelineState = Depends(get_pipeline_state)
+) -> Dict[str, Any]:
+    """Get list of available strategies (no auth required)."""
+    if state.pipeline is None:
         # Create temporary pipeline to get strategies
         temp_pipeline = TradingPipeline()
         strategies = temp_pipeline.signal_manager.list_strategies()
     else:
-        strategies = pipeline.signal_manager.list_strategies()
+        strategies = state.pipeline.signal_manager.list_strategies()
     
     return {
         "strategies": strategies
@@ -170,19 +249,23 @@ async def get_strategies() -> Dict[str, Any]:
 
 
 @app.get("/api/strategy/{strategy_name}")
-async def get_strategy_details(strategy_name: str) -> Dict[str, Any]:
-    """Get detailed metrics for a specific strategy."""
-    global cached_results
-    
-    if not cached_results or strategy_name not in cached_results.get('strategies', {}):
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+async def get_strategy_details(
+    strategy_name: str,
+    request: Request,
+    state: PipelineState = Depends(get_pipeline_state),
+    _: str = Depends(require_api_key)
+) -> Dict[str, Any]:
+    """Get detailed metrics for a specific strategy. Requires auth."""
+    if not state.cached_results or strategy_name not in state.cached_results.get('strategies', {}):
         raise HTTPException(status_code=404, detail=f"Strategy {strategy_name} not found")
     
-    return cached_results['strategies'][strategy_name]
+    return state.cached_results['strategies'][strategy_name]
 
 
 @app.get("/api/report/{strategy_name}")
 async def get_strategy_report(strategy_name: str):
-    """Get HTML report for a strategy."""
+    """Get HTML report for a strategy (no auth for viewing reports)."""
     report_path = Path(f"reports/{strategy_name}_report.html")
     
     if not report_path.exists():
@@ -192,30 +275,35 @@ async def get_strategy_report(strategy_name: str):
 
 
 @app.get("/api/comparison")
-async def get_comparison() -> Dict[str, Any]:
-    """Get strategy comparison table."""
-    global cached_results
-    
-    if not cached_results:
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+async def get_comparison(
+    request: Request,
+    state: PipelineState = Depends(get_pipeline_state),
+    _: str = Depends(require_api_key)
+) -> Dict[str, Any]:
+    """Get strategy comparison table. Requires auth."""
+    if not state.cached_results:
         return {"comparison": []}
     
     return {
-        "comparison": _format_comparison_table(cached_results)
+        "comparison": _format_comparison_table(state.cached_results)
     }
 
 
 @app.get("/api/rolling/{strategy_name}")
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
 async def get_rolling_metrics(
     strategy_name: str,
-    window: int = 30
+    request: Request,
+    window: int = 30,
+    state: PipelineState = Depends(get_pipeline_state),
+    _: str = Depends(require_api_key)
 ) -> Dict[str, Any]:
-    """Get rolling metrics for a strategy."""
-    global pipeline
-    
-    if pipeline is None or strategy_name not in pipeline._results:
+    """Get rolling metrics for a strategy. Requires auth."""
+    if state.pipeline is None or strategy_name not in state.pipeline._results:
         raise HTTPException(status_code=404, detail="Strategy not found")
     
-    result = pipeline._results[strategy_name]
+    result = state.pipeline._results[strategy_name]
     returns = result.portfolio_returns
     
     # Calculate rolling metrics
