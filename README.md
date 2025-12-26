@@ -165,22 +165,102 @@ Max Drawdown:   -12.3%
 Win Rate:       68%
 ```
 
-#### 2. **Statistical Arbitrage (Pairs Trading)**
+#### 2. **Meta-Labeling (ML Trade Filtering)**
+- **Primary Model**: Any base strategy (e.g., OLMAR, Dual Momentum)
+- **Meta Model**: Random Forest classifier with 100 estimators
+- **Goal**: Filter out low-probability trades (optimize precision > recall)
+- **Features**: 
+  - Volatility regime (rolling std, ATR)
+  - Trend strength (RSI, MACD)
+  - Market breadth (advance/decline ratio)
+  - Momentum indicators
+- **Triple-Barrier Labeling**: Profit target, stop loss, time limit
+- **Strategy**: `strategy/quant2/meta_labeling/`
+
+#### 3. **Regime Detection (HMM-Based)**
+- **States**: Bull Market, Bear Market, High Volatility, Low Volatility
+- **Method**: Hidden Markov Model (HMM) on returns + VIX
+- **Features**: Daily returns, volatility, correlation regime, VIX levels
+- **Use Cases**:
+  - Adjust position sizing per regime (aggressive in bull, defensive in bear)
+  - Strategy selection (trend-following in bull, mean-reversion in sideways)
+  - Risk management (reduce leverage in high-vol regimes)
+- **Strategy**: `strategy/quant2/regime/`
+
+#### 4. **Statistical Arbitrage & Pairs Trading**
 - **Mechanism**: Cointegration-based pairs with mean reversion
 - **Universe**: 741 tickers (S&P 500 + NASDAQ 100 + ASX 200)
-- **Entry**: Z-score > 2.0 (price divergence)
-- **Exit**: Z-score crosses 0 (convergence)
+- **Pair Selection Methods**:
+  - Distance clustering
+  - Cointegration tests (Engle-Granger)
+  - Kalman filtering for dynamic hedge ratios
+- **Entry**: Z-score > 2.0 (significant divergence)
+- **Exit**: Z-score crosses 0 (convergence) or stop-loss at ±3σ
+- **Liquidity Provision**: Market-making strategies on tight spreads
+- **Strategy**: `strategy/quant2/stat_arb/`
 
-#### 3. **Meta-Labeling (ML Trade Filtering)**
-- **Primary Model**: Any base strategy (e.g., OLMAR)
-- **Meta Model**: Random Forest classifier
-- **Goal**: Filter out low-probability trades (precision > recall)
-- **Features**: Volatility regime, trend strength, market breadth
+#### 5. **Momentum Strategies**
+- **Residual Momentum**: Fama-French factor-adjusted momentum
+  - Remove market, size, value, profitability, investment factors
+  - Trade only idiosyncratic momentum (stock-specific)
+- **Volatility Scaling**: Risk-adjusted position sizing
+  - Scale positions inversely to volatility
+  - Target constant risk contribution
+- **Strategy**: `strategy/quant2/momentum/`
 
-#### 4. **Regime Detection**
-- **States**: Bull, Bear, High Vol, Low Vol
-- **Method**: Hidden Markov Model (HMM) on returns + VIX
-- **Use**: Adjust position sizing and strategy selection per regime
+#### 6. **Volatility & Options Strategies**
+- **VRP (Volatility Risk Premium)**: 
+  - Trade the difference between implied and realized volatility
+  - Sell overpriced options, buy underpriced options
+- **Iron Condor**: Market-neutral income strategy
+  - Profit from low volatility and range-bound markets
+- **Tail Hedge**: Protective puts and OTM calls
+  - Insurance against black swan events
+- **Strategy**: `strategy/quant2/volatility/`
+
+#### 7. **Portfolio Optimization**
+- **NCO (Nested Cluster Optimization)**:
+  - Combines hierarchical clustering with mean-variance optimization
+  - More robust than traditional MVO
+  - Reduces estimation error in covariance matrix
+- **Strategy**: `strategy/quant2/optimization/`
+
+---
+
+## 📊 Interactive Dashboards
+
+### Quant 1.0 Dashboards
+- **Strategy Dashboard** (`dashboard/strategy_dashboard.html`)
+  - Live trade tracking with rolling history
+  - Portfolio metrics and P&L analytics
+- **Strategy Guide** (`dashboard/strategy_guide.html`)
+  - Comprehensive documentation for Quant 1 strategies
+
+### Quant 2.0 Dashboards (NEW)
+- **Main Dashboard** (`dashboard/quant2_dashboard.html`)
+  - Unified view of all Quant 2.0 strategies
+  - Performance comparison across strategies
+- **Meta-Labeling Dashboard** (`dashboard/quant2_meta_labeling.html`)
+  - Feature importance visualization
+  - Precision/recall curves
+  - Trade filtering performance
+- **Regime Detection Dashboard** (`dashboard/quant2_regime.html`)
+  - Real-time regime classification
+  - Regime transition probabilities
+  - Strategy allocation by regime
+- **Statistical Arbitrage Dashboard** (`dashboard/quant2_stat_arb.html`)
+  - Active pairs and z-scores
+  - Cointegration test results
+  - Performance by pair
+- **Residual Momentum Dashboard** (`dashboard/quant2_residual_momentum.html`)
+  - Factor exposures
+  - Residual returns decomposition
+
+### Scanners
+- **Quallamaggie Scanner** (`dashboard/quallamaggie_scanner.html`)
+  - Momentum breakout scanner
+  - Volume and volatility filters
+  - Real-time stock scanning
 
 ---
 
