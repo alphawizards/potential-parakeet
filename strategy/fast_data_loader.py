@@ -86,7 +86,10 @@ class FastDataLoader:
                  end_date: str = None,
                  max_workers: int = 8,
                  batch_size: int = 20,
-                 retry_config: Optional[RetryConfig] = None):
+                 retry_config: Optional[RetryConfig] = None,
+                 use_tiingo_fallback: bool = False,
+                 tiingo_api_token: str = None,
+                 tiingo_is_premium: bool = False):
         self.end_date = end_date or datetime.now().strftime("%Y-%m-%d")
         self.start_date = start_date or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
         self.max_workers = max_workers
@@ -97,6 +100,17 @@ class FastDataLoader:
         # Metrics and error tracking
         self.metrics = FetchMetrics()
         self.failed_tickers: Dict[str, str] = {}  # ticker -> error_reason
+        
+        # Tiingo integration
+        self.use_tiingo_fallback = use_tiingo_fallback
+        self.tiingo_loader = None
+        if use_tiingo_fallback and tiingo_api_token:
+            from .tiingo_data_loader import TiingoDataLoader
+            self.tiingo_loader = TiingoDataLoader(
+                api_token=tiingo_api_token,
+                is_premium=tiingo_is_premium
+            )
+            print(f"✅ Tiingo PRIMARY source enabled (Premium tier) - yFinance fallback")
 
     # =========================================================================
     # ERROR CLASSIFICATION & RETRY LOGIC
@@ -127,7 +141,11 @@ class FastDataLoader:
 
     def _fetch_batch_with_retry(self, tickers: List[str], start_date: str, end_date: str) -> pd.DataFrame:
         """
-        Fetch a batch with exponential backoff retry.
+        Fetch a batch with Tiingo primary, yFinance fallback.
+        
+        Strategy (with Tiingo Premium):
+        1. Try Tiingo first (institutional quality, premium access)
+        2. If Tiingo fails, fall back to yFinance (free backup with retries)
         
         Args:
             tickers: List of ticker symbols
@@ -135,8 +153,27 @@ class FastDataLoader:
             end_date: End date for fetching
             
         Returns:
-            DataFrame with price data (empty if all retries fail)
+            DataFrame with price data (empty if all sources fail)
         """
+        self.metrics.total_tickers += len(tickers)
+        
+        # PRIMARY SOURCE: Tiingo (with premium subscription)
+        if self.tiingo_loader:
+            try:
+                print(f"📊 Fetching {tickers[:3]}... from Tiingo (primary)")
+                result = self.tiingo_loader.fetch_batch(tickers, start_date, end_date)
+                
+                if not result.empty:
+                    self.metrics.successful_tickers += len(result.columns)
+                    print(f"✅ Tiingo: {len(result.columns)}/{len(tickers)} tickers")
+                    return result
+                else:
+                    print(f"⚠️  Tiingo returned empty, trying yFinance fallback...")
+                    
+            except Exception as e:
+                print(f"⚠️  Tiingo error: {str(e)[:100]}, trying yFinance fallback...")
+        
+        # FALLBACK SOURCE: yFinance (free backup with retry logic)
         for attempt in range(self.retry_config.max_retries + 1):
             try:
                 result = self._fetch_batch(tickers, start_date, end_date)
@@ -176,6 +213,8 @@ class FastDataLoader:
                 
                 time.sleep(delay)
         
+        # Both sources failed
+        print(f"❌ Both Tiingo and yFinance failed for {tickers[:3]}...")
         return pd.DataFrame()
 
     # =========================================================================
@@ -465,6 +504,250 @@ class FastDataLoader:
             for f in CACHE_DIR.glob("*.parquet"):
                 f.unlink()
             print("🗑️ Cache cleared.")
+    
+    # =========================================================================
+    # CACHED DATA LOADING (Tiingo Premium + yFinance)
+    # =========================================================================
+    
+    def load_cached_tiingo_stocks(self, tickers: List[str] = None) -> pd.DataFrame:
+        """
+        Load US stocks from pre-fetched Tiingo cache files (560 stocks, 21 years).
+        
+        This method loads from the 4 Tiingo cache files created by fetch_us_stocks_20yr_tiingo.py:
+        - prices_80729c86b695.parquet (529 tickers)
+        - historical_delisted_tickers_20yr.parquet (20 tickers)
+        - nasdaq100_additional_tickers_21yr.parquet (2 tickers)
+        - sp500_additional_tickers_21yr.parquet (9 tickers)
+        
+        Args:
+            tickers: Optional list of specific tickers to load. If None, loads all 560.
+            
+        Returns:
+            DataFrame with adjusted close prices (dates × tickers)
+            
+        Example:
+            >>> loader = FastDataLoader()
+            >>> # Load all 560 stocks
+            >>> all_stocks = loader.load_cached_tiingo_stocks()
+            >>> # Load specific stocks
+            >>> tech_stocks = loader.load_cached_tiingo_stocks(['AAPL', 'MSFT', 'GOOGL'])
+        """
+        cache_files = [
+            "prices_80729c86b695.parquet",
+            "historical_delisted_tickers_20yr.parquet",
+            "nasdaq100_additional_tickers_21yr.parquet",
+            "sp500_additional_tickers_21yr.parquet"
+        ]
+        
+        dfs = []
+        for filename in cache_files:
+            filepath = CACHE_DIR / filename
+            if filepath.exists():
+                try:
+                    df = pd.read_parquet(filepath)
+                    dfs.append(df)
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not load {filename}: {e}")
+            else:
+                print(f"⚠️ Warning: Cache file not found: {filename}")
+        
+        if not dfs:
+            print("❌ No Tiingo cache files found! Run fetch_us_stocks_20yr_tiingo.py first.")
+            return pd.DataFrame()
+        
+        # Combine all files
+        combined = pd.concat(dfs, axis=1)
+        
+        # Remove duplicate columns (same ticker in multiple files)
+        combined = combined.loc[:, ~combined.columns.duplicated()]
+        
+        print(f"✅ Loaded {len(combined.columns)} US stocks from Tiingo cache")
+        print(f"   Date range: {combined.index.min().date()} to {combined.index.max().date()}")
+        print(f"   Total days: {len(combined)}")
+        
+        # Filter to requested tickers if specified
+        if tickers:
+            available_tickers = [t for t in tickers if t in combined.columns]
+            missing_tickers = [t for t in tickers if t not in combined.columns]
+            
+            if missing_tickers:
+                print(f"⚠️ Warning: {len(missing_tickers)} tickers not in cache: {missing_tickers[:5]}")
+            
+            if available_tickers:
+                return combined[available_tickers]
+            else:
+                print("❌ None of the requested tickers found in cache")
+                return pd.DataFrame()
+        
+        return combined
+    
+    def load_cached_etfs(self, etf_list: List[str] = None) -> pd.DataFrame:
+        """
+        Load ETFs from yFinance cache.
+        
+        Currently supports ASX ETFs fetched by test_stack_readiness.py:
+        - VAS.AX, A200.AX, IOZ.AX, STW.AX, VGS.AX, VGE.AX
+        
+        Args:
+            etf_list: Optional list of specific ETFs to load. If None, loads all available.
+            
+        Returns:
+            DataFrame with ETF prices
+        """
+        # List of known ETF cache files
+        etf_files = {
+            'VAS.AX': 'vas_ax_yfinance.parquet',
+            'A200.AX': 'a200_ax_yfinance.parquet',
+            'IOZ.AX': 'ioz_ax_yfinance.parquet',
+            'STW.AX': 'stw_ax_yfinance.parquet',
+            'VGS.AX': 'vgs_ax_yfinance.parquet',
+            'VGE.AX': 'vge_ax_yfinance.parquet'
+        }
+        
+        dfs = []
+        loaded_etfs = []
+        
+        etfs_to_load = etf_list if etf_list else list(etf_files.keys())
+        
+        for etf in etfs_to_load:
+            if etf in etf_files:
+                filepath = CACHE_DIR / etf_files[etf]
+                if filepath.exists():
+                    try:
+                        df = pd.read_parquet(filepath)
+                        # Ensure 'Close' column exists and rename to ticker
+                        if 'Close' in df.columns:
+                            df = df[['Close']].rename(columns={'Close': etf})
+                            dfs.append(df)
+                            loaded_etfs.append(etf)
+                    except Exception as e:
+                        print(f"⚠️ Warning: Could not load {etf}: {e}")
+        
+        if not dfs:
+            print("⚠️ No ETF cache files found")
+            return pd.DataFrame()
+        
+        combined = pd.concat(dfs, axis=1)
+        print(f"✅ Loaded {len(loaded_etfs)} ETFs from cache: {loaded_etfs}")
+        
+        return combined
+    
+    def load_cached_vix(self) -> pd.Series:
+        """
+        Load VIX index from yFinance cache.
+        
+        Returns:
+            Series with VIX close prices
+        """
+        filepath = CACHE_DIR / "vix_yfinance.parquet"
+        
+        if not filepath.exists():
+            print("❌ VIX cache not found. Run test_stack_readiness.py first.")
+            return pd.Series()
+        
+        try:
+            df = pd.read_parquet(filepath)
+            vix = df['Close'].squeeze()
+            print(f"✅ Loaded VIX data: {len(vix)} days ({vix.index.min().date()} to {vix.index.max().date()})")
+            return vix
+        except Exception as e:
+            print(f"❌ Error loading VIX: {e}")
+            return pd.Series()
+    
+    def load_cached_gold(self) -> pd.DataFrame:
+        """
+        Load Gold (GLD) from Tiingo cache.
+        
+        Returns:
+            DataFrame with Gold prices (OHLCV)
+        """
+        filepath = CACHE_DIR / "gold_tiingo_20yr.parquet"
+        
+        if not filepath.exists():
+            print("❌ Gold cache not found. Run fetch_gold_tiingo.py first.")
+            return pd.DataFrame()
+        
+        try:
+            df = pd.read_parquet(filepath)
+            print(f"✅ Loaded Gold data: {len(df)} days ({df.index.min().date()} to {df.index.max().date()})")
+            return df
+        except Exception as e:
+            print(f"❌ Error loading Gold: {e}")
+            return pd.DataFrame()
+    
+    def load_cached_btc(self) -> pd.DataFrame:
+        """
+        Load Bitcoin (BTC-USD) from yFinance cache.
+        
+        Returns:
+            DataFrame with BTC prices
+        """
+        filepath = CACHE_DIR / "btc_usd_yfinance.parquet"
+        
+        if not filepath.exists():
+            print("❌ BTC cache not found. Run test_stack_readiness.py first.")
+            return pd.DataFrame()
+        
+        try:
+            df = pd.read_parquet(filepath)
+            print(f"✅ Loaded BTC data: {len(df)} days ({df.index.min().date()} to {df.index.max().date()})")
+            return df
+        except Exception as e:
+            print(f"❌ Error loading BTC: {e}")
+            return pd.DataFrame()
+    
+    def get_available_tickers(self) -> Dict[str, List[str]]:
+        """
+        Get list of all available tickers in cache.
+        
+        Returns:
+            Dictionary with categories:
+            {
+                'us_stocks': [list of 560 US stock tickers],
+                'etfs': [list of ASX ETF tickers],
+                'crypto': ['BTC-USD'],
+                'indices': ['^VIX'],
+                'commodities': ['GLD']
+            }
+        """
+        available = {
+            'us_stocks': [],
+            'etfs': [],
+            'crypto': [],
+            'indices': [],
+            'commodities': []
+        }
+        
+        # Load US stocks to get ticker list
+        try:
+            stocks = self.load_cached_tiingo_stocks()
+            if not stocks.empty:
+                available['us_stocks'] = list(stocks.columns)
+        except:
+            pass
+        
+        # Check for ETFs
+        etf_files = ['vas_ax_yfinance.parquet', 'a200_ax_yfinance.parquet', 
+                     'ioz_ax_yfinance.parquet', 'stw_ax_yfinance.parquet',
+                     'vgs_ax_yfinance.parquet', 'vge_ax_yfinance.parquet']
+        for f in etf_files:
+            if (CACHE_DIR / f).exists():
+                etf_name = f.replace('_yfinance.parquet', '').upper().replace('_', '.')
+                available['etfs'].append(etf_name)
+        
+        # Check for crypto
+        if (CACHE_DIR / "btc_usd_yfinance.parquet").exists():
+            available['crypto'].append('BTC-USD')
+        
+        # Check for indices
+        if (CACHE_DIR / "vix_yfinance.parquet").exists():
+            available['indices'].append('^VIX')
+        
+        # Check for commodities
+        if (CACHE_DIR / "gold_tiingo_20yr.parquet").exists():
+            available['commodities'].append('GLD')
+        
+        return available
 
     # =========================================================================
     # METRICS & MONITORING
