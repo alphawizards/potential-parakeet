@@ -1,327 +1,614 @@
 """
 Quallamaggie Strategy Backtest Module
 ======================================
-Implements Kristjan Kullamägi's momentum breakout strategy with pattern recognition.
+Systematic swing trading pipeline implementing Kristjan Kullamägi's 
+momentum breakout strategy with Riskfolio-Lib portfolio optimization.
 
-Compares different momentum lookback periods:
-- 1-month (21 trading days)
-- 3-month (63 trading days)  
-- 6-month (126 trading days)
+Architecture:
+    Module 1: Filtering - Vectorized pandas filters for liquidity, momentum, trend, consolidation
+    Module 2: Optimization - Mean-Variance optimization with Riskfolio-Lib
 
-Strategy Logic:
-1. Screen for top momentum stocks
-2. Identify breakout patterns (simplified: consolidation then breakout)
-3. Entry on breakout with volume confirmation
-4. Exit on close below trailing moving average
+Key Principles:
+    - Use 'Adj Close' for returns/momentum/MA calculations (split/dividend adjusted)
+    - Use 'Close' (raw) for price level filters ($5) and dollar volume
+    - No look-ahead bias through proper signal shifting
 """
 
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Callable
-import yfinance as yf
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime
 import warnings
 
 warnings.filterwarnings('ignore')
+
+# Try to import dependencies
+try:
+    import yfinance as yf
+    HAS_YFINANCE = True
+except ImportError:
+    HAS_YFINANCE = False
+    print("Warning: yfinance not installed")
+
+try:
+    import riskfolio as rp
+    HAS_RISKFOLIO = True
+except ImportError:
+    HAS_RISKFOLIO = False
+    print("Warning: riskfolio not installed. Portfolio optimization unavailable.")
+
+try:
+    from scipy.stats import linregress
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
 
 
 # ============== CONFIGURATION ==============
 
 @dataclass
-class QuallamaggieConfig:
-    """Configuration for Quallamaggie strategy backtest."""
+class QullamaggieConfig:
+    """Configuration for Quallamaggie strategy."""
     
-    # Universe - US momentum stocks (high liquidity)
-    UNIVERSE: List[str] = None
+    # Liquidity Thresholds
+    MIN_PRICE: float = 5.0  # Minimum price (raw close)
+    MIN_DOLLAR_VOLUME: float = 20_000_000  # 20-day avg dollar volume
+    DOLLAR_VOLUME_WINDOW: int = 20
     
-    # Momentum lookback periods (trading days)
-    MOMENTUM_1M: int = 21
-    MOMENTUM_3M: int = 63
-    MOMENTUM_6M: int = 126
+    # Momentum Thresholds (The Engine)
+    MOMENTUM_3M_THRESHOLD: float = 0.30  # 30% in 3 months
+    MOMENTUM_1M_THRESHOLD: float = 0.10  # 10% in 1 month
+    MOMENTUM_3M_DAYS: int = 63
+    MOMENTUM_1M_DAYS: int = 21
     
-    # Pattern parameters
-    CONSOLIDATION_DAYS: int = 10  # Min days in consolidation
-    BREAKOUT_VOLUME_MULT: float = 1.5  # Volume must be 1.5x average
+    # Trend Architecture
+    SMA_10: int = 10
+    SMA_20: int = 20
+    SMA_50: int = 50
+    SMA_200: int = 200
+    SMA_SLOPE_WINDOW: int = 10  # Days for slope calculation
     
-    # Position sizing
-    RISK_PER_TRADE: float = 0.005  # 0.5% of account per trade
-    MAX_POSITION_PCT: float = 0.20  # 20% max position
-    MAX_POSITIONS: int = 10  # Maximum concurrent positions
+    # Consolidation (The Setup)
+    HTF_LOOKBACK: int = 126  # 6 months for High Tight Flag
+    HTF_THRESHOLD: float = 0.85  # Price >= 85% of 126-day high
+    ATR_PERIOD: int = 14
+    ATR_AVG_WINDOW: int = 20
     
-    # Exit parameters
-    FAST_EMA: int = 10  # Fast trailing stop
-    SLOW_EMA: int = 20  # Slow trailing stop
-    PARTIAL_EXIT_DAYS: int = 5  # Sell half after 5 days
-    PARTIAL_EXIT_PCT: float = 0.5  # Sell 50% on first exit
+    # Portfolio Optimization
+    MAX_WEIGHT: float = 0.20  # 20% max per asset
+    MAX_POSITION_RISK: float = 0.01  # 1% max position risk
+    LOOKBACK_RETURNS: int = 126  # 6 months for covariance
     
-    # Backtest parameters
+    # Exit Parameters
+    FAST_EMA: int = 10
+    MID_EMA: int = 20
+    SLOW_EMA: int = 50
+    
+    # Backtest Parameters
     INITIAL_CAPITAL: float = 100_000.0
     TRADE_FEE: float = 3.0  # $3 per trade
-    SLIPPAGE_BPS: float = 10  # 10 bps slippage
-    
-    # Data parameters
-    START_DATE: str = "2010-01-01"
-    END_DATE: str = None  # None = today
-    
-    def __post_init__(self):
-        if self.UNIVERSE is None:
-            # ETF-focused universe (more reliable with yfinance)
-            # Mix of equity, sector, and asset class ETFs for momentum testing
-            self.UNIVERSE = [
-                # Broad Market ETFs
-                'SPY', 'QQQ', 'IWM', 'DIA', 'VTI',
-                # Sector ETFs
-                'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLB', 'XLC', 'XLRE', 'XLU', 'XLP',
-                # Thematic/Momentum ETFs
-                'ARKK', 'SOXX', 'SMH', 'XBI', 'IBB', 'TAN', 'ICLN',
-                # International
-                'EFA', 'EEM', 'VEA', 'VWO',
-                # Bonds
-                'TLT', 'IEF', 'SHY', 'BND', 'HYG', 'LQD',
-                # Commodities
-                'GLD', 'SLV', 'USO', 'UNG', 'DBC',
-                # Leveraged (for testing momentum sensitivity)
-                'TQQQ', 'SOXL', 'UPRO'
-            ]
-        if self.END_DATE is None:
-            self.END_DATE = datetime.now().strftime("%Y-%m-%d")
+    SLIPPAGE_BPS: float = 10
 
 
-CONFIG = QuallamaggieConfig()
+# ============== DATA HANDLING ==============
+
+def fetch_data(
+    tickers: List[str],
+    start: str = '2020-01-01',
+    end: str = None
+) -> pd.DataFrame:
+    """
+    Fetch and format data into required MultiIndex structure.
+    
+    Args:
+        tickers: List of ticker symbols
+        start: Start date string
+        end: End date (default: today)
+        
+    Returns:
+        MultiIndex DataFrame (Ticker, Date) with OHLCV columns
+    """
+    if not HAS_YFINANCE:
+        raise ImportError("yfinance required. Install with: pip install yfinance")
+    
+    if end is None:
+        end = datetime.now().strftime('%Y-%m-%d')
+    
+    print(f"Fetching data for {len(tickers)} tickers...")
+    
+    data = yf.download(
+        tickers,
+        start=start,
+        end=end,
+        progress=False,
+        auto_adjust=False,  # Get both Close and Adj Close
+        threads=False
+    )
+    
+    if data.empty:
+        raise ValueError("No data fetched from yfinance")
+    
+    # Reshape to MultiIndex (Ticker, Date)
+    if isinstance(data.columns, pd.MultiIndex):
+        # Multiple tickers - need to reshape
+        dfs = []
+        for ticker in tickers:
+            if ticker not in data.columns.get_level_values(1):
+                continue
+            ticker_data = data.xs(ticker, level=1, axis=1).copy()
+            ticker_data['Ticker'] = ticker
+            ticker_data = ticker_data.reset_index()
+            dfs.append(ticker_data)
+        
+        if not dfs:
+            raise ValueError("No valid ticker data found")
+        
+        df = pd.concat(dfs, ignore_index=True)
+        df = df.set_index(['Ticker', 'Date'])
+    else:
+        # Single ticker
+        df = data.copy()
+        df['Ticker'] = tickers[0]
+        df = df.reset_index()
+        df = df.set_index(['Ticker', 'Date'])
+    
+    # Ensure required columns
+    required_cols = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"Missing required column: {col}")
+    
+    print(f"Loaded {len(df.index.get_level_values('Ticker').unique())} tickers")
+    return df
 
 
-# ============== DATA LOADING ==============
+# ============== MODULE 1: FILTERING ==============
 
-class QuallamaggieDataLoader:
-    """Load and prepare data for Quallamaggie strategy."""
+class QullamaggieFilter:
+    """
+    Vectorized filtering for Quallamaggie swing trading strategy.
     
-    def __init__(self, config: QuallamaggieConfig = None):
-        self.config = config or CONFIG
+    Filters applied sequentially:
+    1. Liquidity (price > $5, dollar volume > $20M)
+    2. Momentum (3M >= 30%, 1M >= 10%, RS > SPY)
+    3. Trend (Perfect MA alignment, positive slope)
+    4. Consolidation (High tight flag, volatility contraction)
+    """
     
-    def fetch_prices(self, tickers: List[str] = None) -> pd.DataFrame:
-        """Fetch adjusted close prices from yfinance with retry logic."""
-        tickers = tickers or self.config.UNIVERSE
-        
-        print(f"Fetching data for {len(tickers)} tickers...")
-        
-        # Try fetching with retries
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                data = yf.download(
-                    tickers,
-                    start=self.config.START_DATE,
-                    end=self.config.END_DATE,
-                    progress=False,
-                    threads=False,  # Disable threading for stability
-                    auto_adjust=True
-                )
-                break
-            except Exception as e:
-                print(f"Attempt {attempt + 1} failed: {e}")
-                if attempt == max_retries - 1:
-                    # Fall back to fetching one by one
-                    print("Falling back to individual ticker fetching...")
-                    data = self._fetch_individual(tickers)
-        
-        if data is None or data.empty:
-            raise ValueError("Failed to fetch any data from yfinance")
-        
-        if isinstance(data.columns, pd.MultiIndex):
-            prices = data['Close'] if 'Close' in data.columns.get_level_values(0) else data['Adj Close']
-        else:
-            prices = data[['Close']] if 'Close' in data.columns else data
-            if len(tickers) == 1:
-                prices.columns = tickers
-        
-        # Drop tickers with insufficient data
-        min_data_pct = 0.8
-        valid_cols = prices.columns[prices.notna().sum() / len(prices) >= min_data_pct]
-        prices = prices[valid_cols].dropna(how='all')
-        
-        print(f"Loaded {len(valid_cols)} tickers with sufficient data")
-        return prices
+    def __init__(self, config: QullamaggieConfig = None):
+        self.config = config or QullamaggieConfig()
+        self._filter_log = []
     
-    def _fetch_individual(self, tickers: List[str]) -> pd.DataFrame:
-        """Fetch tickers individually as fallback."""
-        all_data = {}
+    def filter_universe(
+        self,
+        df: pd.DataFrame,
+        spy_returns: pd.Series = None,
+        verbose: bool = True
+    ) -> List[str]:
+        """
+        Apply all filtering rules to multi-asset universe.
+        
+        Args:
+            df: MultiIndex DataFrame (Ticker, Date) with OHLCV
+            spy_returns: Optional SPY returns for relative strength
+            verbose: Print filter statistics
+            
+        Returns:
+            List of valid tickers passing all criteria
+        """
+        self._filter_log = []
+        
+        # Get unique tickers
+        tickers = df.index.get_level_values('Ticker').unique().tolist()
+        self._log(f"Starting universe: {len(tickers)} tickers")
+        
+        # Get latest date for snapshot filtering
+        latest_date = df.index.get_level_values('Date').max()
+        
+        # Apply filters sequentially
+        valid_tickers = set(tickers)
+        
+        # 1. Liquidity Filters
+        valid_tickers = self._filter_liquidity(df, valid_tickers, latest_date)
+        self._log(f"After liquidity: {len(valid_tickers)} tickers")
+        
+        # 2. Momentum Filters
+        valid_tickers = self._filter_momentum(df, valid_tickers, latest_date, spy_returns)
+        self._log(f"After momentum: {len(valid_tickers)} tickers")
+        
+        # 3. Trend Architecture Filters
+        valid_tickers = self._filter_trend(df, valid_tickers, latest_date)
+        self._log(f"After trend: {len(valid_tickers)} tickers")
+        
+        # 4. Consolidation Filters
+        valid_tickers = self._filter_consolidation(df, valid_tickers, latest_date)
+        self._log(f"After consolidation: {len(valid_tickers)} tickers")
+        
+        if verbose:
+            for log in self._filter_log:
+                print(f"  {log}")
+        
+        return list(valid_tickers)
+    
+    def _log(self, msg: str):
+        self._filter_log.append(msg)
+    
+    def _filter_liquidity(
+        self,
+        df: pd.DataFrame,
+        tickers: set,
+        latest_date
+    ) -> set:
+        """Apply liquidity filters: price > $5, dollar volume > $20M."""
+        valid = set()
+        
         for ticker in tickers:
             try:
-                t = yf.Ticker(ticker)
-                hist = t.history(start=self.config.START_DATE, end=self.config.END_DATE)
-                if not hist.empty:
-                    all_data[ticker] = hist['Close']
-            except Exception as e:
-                print(f"Failed to fetch {ticker}: {e}")
+                ticker_data = df.loc[ticker]
+                
+                # Check raw close > $5
+                current_close = ticker_data.loc[latest_date, 'Close']
+                if current_close <= self.config.MIN_PRICE:
+                    continue
+                
+                # Check 20-day avg dollar volume > $20M
+                dollar_volume = ticker_data['Close'] * ticker_data['Volume']
+                avg_dv = dollar_volume.rolling(self.config.DOLLAR_VOLUME_WINDOW).mean()
+                
+                if len(avg_dv) == 0 or pd.isna(avg_dv.iloc[-1]):
+                    continue
+                    
+                if avg_dv.iloc[-1] < self.config.MIN_DOLLAR_VOLUME:
+                    continue
+                
+                valid.add(ticker)
+                
+            except (KeyError, IndexError):
                 continue
         
-        if all_data:
-            return pd.DataFrame(all_data)
-        return pd.DataFrame()
+        return valid
     
-    def fetch_volume(self, tickers: List[str] = None) -> pd.DataFrame:
-        """Fetch volume data from yfinance."""
-        tickers = tickers or self.config.UNIVERSE
+    def _filter_momentum(
+        self,
+        df: pd.DataFrame,
+        tickers: set,
+        latest_date,
+        spy_returns: pd.Series = None
+    ) -> set:
+        """Apply momentum filters: 3M >= 30%, 1M >= 10%, RS > SPY."""
+        valid = set()
+        
+        for ticker in tickers:
+            try:
+                ticker_data = df.loc[ticker]
+                adj_close = ticker_data['Adj Close']
+                
+                # 3-month return >= 30%
+                ret_3m = adj_close.pct_change(self.config.MOMENTUM_3M_DAYS)
+                if pd.isna(ret_3m.iloc[-1]) or ret_3m.iloc[-1] < self.config.MOMENTUM_3M_THRESHOLD:
+                    continue
+                
+                # 1-month return >= 10%
+                ret_1m = adj_close.pct_change(self.config.MOMENTUM_1M_DAYS)
+                if pd.isna(ret_1m.iloc[-1]) or ret_1m.iloc[-1] < self.config.MOMENTUM_1M_THRESHOLD:
+                    continue
+                
+                # Relative Strength vs SPY (if provided)
+                if spy_returns is not None:
+                    spy_3m = spy_returns.iloc[-1] if len(spy_returns) > 0 else 0
+                    if ret_3m.iloc[-1] <= spy_3m:
+                        continue
+                
+                valid.add(ticker)
+                
+            except (KeyError, IndexError):
+                continue
+        
+        return valid
+    
+    def _filter_trend(
+        self,
+        df: pd.DataFrame,
+        tickers: set,
+        latest_date
+    ) -> set:
+        """Apply trend filters: Perfect MA alignment, positive SMA50 slope."""
+        valid = set()
+        
+        for ticker in tickers:
+            try:
+                ticker_data = df.loc[ticker]
+                adj_close = ticker_data['Adj Close']
+                
+                # Calculate SMAs
+                sma_10 = adj_close.rolling(self.config.SMA_10).mean()
+                sma_20 = adj_close.rolling(self.config.SMA_20).mean()
+                sma_50 = adj_close.rolling(self.config.SMA_50).mean()
+                sma_200 = adj_close.rolling(self.config.SMA_200).mean()
+                
+                # Get latest values
+                latest_close = adj_close.iloc[-1]
+                latest_sma10 = sma_10.iloc[-1]
+                latest_sma20 = sma_20.iloc[-1]
+                latest_sma50 = sma_50.iloc[-1]
+                latest_sma200 = sma_200.iloc[-1]
+                
+                # Check for NaN
+                if any(pd.isna([latest_close, latest_sma10, latest_sma20, latest_sma50, latest_sma200])):
+                    continue
+                
+                # Perfect alignment: Close > SMA10 > SMA20 > SMA50
+                if not (latest_close > latest_sma10 > latest_sma20 > latest_sma50):
+                    continue
+                
+                # Above 200 SMA
+                if latest_close <= latest_sma200:
+                    continue
+                
+                # SMA50 positive slope (linear regression over 10 days)
+                if HAS_SCIPY and len(sma_50) >= self.config.SMA_SLOPE_WINDOW:
+                    sma50_recent = sma_50.iloc[-self.config.SMA_SLOPE_WINDOW:].dropna()
+                    if len(sma50_recent) >= self.config.SMA_SLOPE_WINDOW:
+                        slope, _, _, _, _ = linregress(range(len(sma50_recent)), sma50_recent.values)
+                        if slope <= 0:
+                            continue
+                
+                valid.add(ticker)
+                
+            except (KeyError, IndexError):
+                continue
+        
+        return valid
+    
+    def _filter_consolidation(
+        self,
+        df: pd.DataFrame,
+        tickers: set,
+        latest_date
+    ) -> set:
+        """Apply consolidation filters: High tight flag, volatility contraction."""
+        valid = set()
+        
+        for ticker in tickers:
+            try:
+                ticker_data = df.loc[ticker]
+                adj_close = ticker_data['Adj Close']
+                high = ticker_data['High']
+                
+                # High Tight Flag: Current >= 85% of 126-day high
+                rolling_high = high.rolling(self.config.HTF_LOOKBACK).max()
+                htf_threshold = rolling_high * self.config.HTF_THRESHOLD
+                
+                if pd.isna(htf_threshold.iloc[-1]) or adj_close.iloc[-1] < htf_threshold.iloc[-1]:
+                    continue
+                
+                # Volatility Contraction: Current ATR(14) < 20-day avg ATR
+                atr = self._calculate_atr(ticker_data, self.config.ATR_PERIOD)
+                avg_atr = atr.rolling(self.config.ATR_AVG_WINDOW).mean()
+                
+                if pd.isna(atr.iloc[-1]) or pd.isna(avg_atr.iloc[-1]):
+                    continue
+                    
+                if atr.iloc[-1] >= avg_atr.iloc[-1]:
+                    continue
+                
+                valid.add(ticker)
+                
+            except (KeyError, IndexError):
+                continue
+        
+        return valid
+    
+    def _calculate_atr(self, data: pd.DataFrame, period: int) -> pd.Series:
+        """Calculate Average True Range."""
+        high = data['High']
+        low = data['Low']
+        close = data['Adj Close']
+        
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean()
+        
+        return atr
+
+
+# ============== MODULE 2: PORTFOLIO OPTIMIZATION ==============
+
+class QullamaggieOptimizer:
+    """
+    Mean-Variance portfolio optimization for Quallamaggie survivors.
+    
+    Uses Riskfolio-Lib to maximize Sharpe Ratio with constraints:
+    - Max weight per asset: 20%
+    - Long only (no short selling)
+    - Post-optimization risk control layer
+    """
+    
+    def __init__(self, config: QullamaggieConfig = None):
+        self.config = config or QullamaggieConfig()
+    
+    def optimize_weights(
+        self,
+        valid_tickers: List[str],
+        returns_data: pd.DataFrame,
+        stop_loss_pct: Dict[str, float] = None
+    ) -> Dict[str, float]:
+        """
+        Run Mean-Variance optimization on filtered universe.
+        
+        Args:
+            valid_tickers: Tickers passing Module 1 filters
+            returns_data: Adj Close returns DataFrame (columns = tickers)
+            stop_loss_pct: Optional dict of {ticker: stop_loss_%} for risk control
+            
+        Returns:
+            Dictionary {ticker: final_weight} after risk adjustments
+        """
+        if not valid_tickers:
+            return {}
+        
+        if not HAS_RISKFOLIO:
+            # Fallback to equal weight
+            print("Riskfolio not available. Using equal weight.")
+            n = len(valid_tickers)
+            return {t: 1.0 / n for t in valid_tickers}
+        
+        # Filter returns to valid tickers
+        available = [t for t in valid_tickers if t in returns_data.columns]
+        if not available:
+            return {}
+        
+        returns = returns_data[available].iloc[-self.config.LOOKBACK_RETURNS:]
+        returns = returns.dropna(axis=1, how='all').dropna()
+        
+        if len(returns) < 50 or len(returns.columns) == 0:
+            # Not enough data - equal weight
+            return {t: 1.0 / len(available) for t in available}
         
         try:
-            data = yf.download(
-                tickers,
-                start=self.config.START_DATE,
-                end=self.config.END_DATE,
-                progress=False,
-                threads=False
+            # Create Riskfolio Portfolio
+            port = rp.Portfolio(returns=returns)
+            
+            # Estimate statistics
+            port.assets_stats(method_mu='hist', method_cov='ledoit')
+            
+            # Set constraints
+            port.upperlng = self.config.MAX_WEIGHT  # Max 20% per asset
+            
+            # Optimize for max Sharpe
+            weights = port.optimization(
+                model='Classic',
+                rm='MV',
+                obj='Sharpe',
+                rf=0.04,  # 4% risk-free rate
+                hist=True
             )
             
-            if isinstance(data.columns, pd.MultiIndex):
-                volume = data['Volume']
-            else:
-                volume = data[['Volume']] if 'Volume' in data.columns else pd.DataFrame()
-                if len(tickers) == 1 and not volume.empty:
-                    volume.columns = tickers
+            if weights is None:
+                raise ValueError("Optimization failed")
             
-            return volume
+            # Convert to dict
+            weight_dict = weights.squeeze().to_dict()
+            
+            # Apply risk control layer
+            if stop_loss_pct:
+                weight_dict = self._apply_risk_control(weight_dict, stop_loss_pct)
+            
+            # Normalize weights
+            total = sum(weight_dict.values())
+            if total > 0:
+                weight_dict = {k: v / total for k, v in weight_dict.items()}
+            
+            return weight_dict
+            
         except Exception as e:
-            print(f"Failed to fetch volume: {e}")
-            return pd.DataFrame()
-
-
-# ============== SIGNAL GENERATION ==============
-
-class QuallamaggieSignals:
-    """Generate signals for Quallamaggie momentum breakout strategy."""
+            print(f"Optimization failed: {e}. Using equal weight.")
+            return {t: 1.0 / len(available) for t in available}
     
-    def __init__(self, config: QuallamaggieConfig = None):
-        self.config = config or CONFIG
-    
-    def calculate_momentum(self, prices: pd.DataFrame, lookback: int) -> pd.DataFrame:
-        """Calculate momentum as percentage return over lookback period."""
-        return prices.pct_change(lookback)
-    
-    def calculate_momentum_rank(self, prices: pd.DataFrame, lookback: int) -> pd.DataFrame:
-        """Rank stocks by momentum (0-1 scale, 1 = best)."""
-        momentum = self.calculate_momentum(prices, lookback)
-        # Rank across rows (each day)
-        ranks = momentum.rank(axis=1, pct=True, na_option='keep')
-        return ranks
-    
-    def calculate_relative_strength(self, prices: pd.DataFrame, benchmark: str = 'SPY') -> pd.DataFrame:
-        """Calculate relative strength vs benchmark."""
-        if benchmark not in prices.columns:
-            return pd.DataFrame(1.0, index=prices.index, columns=prices.columns)
-        
-        benchmark_prices = prices[benchmark]
-        rs = prices.div(benchmark_prices, axis=0)
-        # Normalize to make comparable
-        rs = rs.pct_change(21)  # 1-month RS change
-        return rs
-    
-    def is_above_ema(self, prices: pd.DataFrame, period: int) -> pd.DataFrame:
-        """Check if price is above EMA."""
-        ema = prices.ewm(span=period, adjust=False).mean()
-        return prices > ema
-    
-    def is_above_sma(self, prices: pd.DataFrame, period: int) -> pd.DataFrame:
-        """Check if price is above SMA."""
-        sma = prices.rolling(period).mean()
-        return prices > sma
-    
-    def detect_consolidation(self, prices: pd.DataFrame, days: int = 10) -> pd.DataFrame:
-        """
-        Detect if stock is in consolidation (low volatility relative to recent past).
-        
-        Returns True if current volatility < 50% of lookback volatility.
-        """
-        returns = prices.pct_change()
-        
-        # Recent volatility (last N days)
-        recent_vol = returns.rolling(days).std()
-        
-        # Baseline volatility (prior 2x period)
-        baseline_vol = returns.shift(days).rolling(days * 2).std()
-        
-        # Consolidation = volatility contraction
-        is_consolidating = recent_vol < (baseline_vol * 0.6)
-        
-        return is_consolidating
-    
-    def detect_breakout(self, prices: pd.DataFrame, volume: pd.DataFrame = None) -> pd.DataFrame:
-        """
-        Detect breakout from consolidation.
-        
-        Breakout = new 20-day high with volume expansion.
-        """
-        # New 20-day high
-        rolling_high = prices.rolling(20).max()
-        is_new_high = prices >= rolling_high
-        
-        # Volume expansion (if volume provided)
-        if volume is not None:
-            avg_volume = volume.rolling(50).mean()
-            volume_expansion = volume > (avg_volume * self.config.BREAKOUT_VOLUME_MULT)
-            breakout = is_new_high & volume_expansion
-        else:
-            breakout = is_new_high
-        
-        return breakout
-    
-    def generate_entry_signals(
+    def _apply_risk_control(
         self,
-        prices: pd.DataFrame,
-        volume: pd.DataFrame = None,
-        momentum_lookback: int = 63
-    ) -> pd.DataFrame:
+        weights: Dict[str, float],
+        stop_loss_pct: Dict[str, float]
+    ) -> Dict[str, float]:
         """
-        Generate entry signals for Quallamaggie strategy.
+        Post-optimization risk control layer.
         
-        Entry criteria:
-        1. Top 20% momentum over lookback period
-        2. Price above 20 EMA and 50 SMA
-        3. In consolidation (volatility contraction)
-        4. Breakout on volume
+        Ensures position_risk = weight * technical_risk <= 1% of account.
         """
-        # Momentum filter - top 20%
-        momentum_rank = self.calculate_momentum_rank(prices, momentum_lookback)
-        is_top_momentum = momentum_rank >= 0.80
+        adjusted = {}
         
-        # Trend filter - above key MAs
-        above_20ema = self.is_above_ema(prices, 20)
-        above_50sma = self.is_above_sma(prices, 50)
-        in_uptrend = above_20ema & above_50sma
+        for ticker, weight in weights.items():
+            if ticker in stop_loss_pct:
+                technical_risk = stop_loss_pct[ticker]
+                position_risk = weight * technical_risk
+                
+                if position_risk > self.config.MAX_POSITION_RISK:
+                    # Scale down weight
+                    adjusted[ticker] = self.config.MAX_POSITION_RISK / technical_risk
+                else:
+                    adjusted[ticker] = weight
+            else:
+                adjusted[ticker] = weight
         
-        # Consolidation filter
-        is_consolidating = self.detect_consolidation(prices, 10)
-        
-        # Breakout detection
-        is_breakout = self.detect_breakout(prices, volume)
-        
-        # Combined signal
-        entry_signal = is_top_momentum & in_uptrend & is_breakout
-        
-        # Forward fill NaN to maintain signal
-        entry_signal = entry_signal.fillna(False)
-        
-        return entry_signal
+        return adjusted
+
+
+# ============== QUALLAMAGGIE STRATEGY CLASS ==============
+
+class QullamaggieStrategy:
+    """
+    Complete Quallamaggie swing trading pipeline.
     
-    def generate_exit_signals(
+    Combines:
+    - Module 1: Universe filtering (liquidity, momentum, trend, consolidation)
+    - Module 2: Portfolio optimization (Mean-Variance with Riskfolio-Lib)
+    """
+    
+    def __init__(self, config: QullamaggieConfig = None):
+        self.config = config or QullamaggieConfig()
+        self.filter = QullamaggieFilter(config)
+        self.optimizer = QullamaggieOptimizer(config)
+    
+    def run(
         self,
-        prices: pd.DataFrame,
-        ema_period: int = 10
-    ) -> pd.DataFrame:
+        df: pd.DataFrame,
+        spy_returns: pd.Series = None,
+        stop_loss_pct: Dict[str, float] = None
+    ) -> Dict[str, float]:
         """
-        Generate exit signals.
+        Run full Quallamaggie pipeline.
         
-        Exit on CLOSE below trailing EMA.
+        Args:
+            df: MultiIndex DataFrame (Ticker, Date)
+            spy_returns: Optional SPY returns for relative strength
+            stop_loss_pct: Optional stop loss percentages for risk control
+            
+        Returns:
+            Dictionary {ticker: optimized_weight}
         """
-        ema = prices.ewm(span=ema_period, adjust=False).mean()
+        print("=" * 60)
+        print("QUALLAMAGGIE STRATEGY PIPELINE")
+        print("=" * 60)
         
-        # Exit when price closes below EMA
-        exit_signal = prices < ema
+        # Module 1: Filter universe
+        print("\nModule 1: Filtering Universe...")
+        valid_tickers = self.filter.filter_universe(df, spy_returns)
         
-        return exit_signal.fillna(False)
+        if not valid_tickers:
+            print("No tickers passed all filters.")
+            return {}
+        
+        print(f"\nSurvivors: {valid_tickers}")
+        
+        # Prepare returns data for optimization
+        all_tickers = df.index.get_level_values('Ticker').unique()
+        returns_dict = {}
+        
+        for ticker in all_tickers:
+            try:
+                ticker_data = df.loc[ticker]
+                returns_dict[ticker] = ticker_data['Adj Close'].pct_change()
+            except:
+                continue
+        
+        returns_data = pd.DataFrame(returns_dict)
+        
+        # Module 2: Optimize weights
+        print("\nModule 2: Portfolio Optimization...")
+        weights = self.optimizer.optimize_weights(valid_tickers, returns_data, stop_loss_pct)
+        
+        print("\nOptimized Weights:")
+        for ticker, weight in sorted(weights.items(), key=lambda x: -x[1]):
+            print(f"  {ticker}: {weight*100:.1f}%")
+        
+        return weights
 
 
-# ============== BACKTESTER ==============
+# ============== BACKTEST ENGINE ==============
 
 @dataclass
 class BacktestResult:
@@ -335,179 +622,184 @@ class BacktestResult:
     calmar: float
     win_rate: float
     total_trades: int
+    avg_holding_days: float
     equity_curve: pd.Series
     trades: pd.DataFrame
 
 
-class QuallamaggieBacktester:
+class QullamaggieBacktester:
     """
-    Backtest Quallamaggie momentum breakout strategy.
-    
-    Simplified implementation focusing on momentum screening + breakout entry.
+    Backtester for Quallamaggie strategy with walk-forward optimization.
     """
     
-    def __init__(self, config: QuallamaggieConfig = None):
-        self.config = config or CONFIG
-        self.signals = QuallamaggieSignals(config)
+    def __init__(self, config: QullamaggieConfig = None):
+        self.config = config or QullamaggieConfig()
+        self.strategy = QullamaggieStrategy(config)
     
     def run_backtest(
         self,
-        prices: pd.DataFrame,
-        volume: pd.DataFrame = None,
-        momentum_lookback: int = 63,
-        trailing_ema: int = 10,
+        df: pd.DataFrame,
+        rebalance_freq: str = 'monthly',
         strategy_name: str = "Quallamaggie"
     ) -> BacktestResult:
         """
-        Run backtest with specified parameters.
+        Run backtest with periodic rebalancing.
         
         Args:
-            prices: DataFrame of adjusted close prices
-            volume: DataFrame of volume (optional)
-            momentum_lookback: Lookback period for momentum screening
-            trailing_ema: EMA period for trailing stop
+            df: MultiIndex DataFrame (Ticker, Date)
+            rebalance_freq: 'daily', 'weekly', 'monthly'
             strategy_name: Name for results
             
         Returns:
             BacktestResult with performance metrics
         """
         print(f"\nRunning backtest: {strategy_name}")
-        print(f"  Momentum lookback: {momentum_lookback} days")
-        print(f"  Trailing EMA: {trailing_ema} days")
         
-        # Generate signals
-        entry_signals = self.signals.generate_entry_signals(
-            prices, volume, momentum_lookback
-        )
-        exit_signals = self.signals.generate_exit_signals(prices, trailing_ema)
+        # Get all dates
+        all_dates = df.index.get_level_values('Date').unique().sort_values()
         
-        # Initialize portfolio
+        # Determine rebalance dates
+        if rebalance_freq == 'monthly':
+            rebalance_dates = all_dates[all_dates.to_series().dt.is_month_start]
+        elif rebalance_freq == 'weekly':
+            rebalance_dates = all_dates[all_dates.weekday == 0]
+        else:
+            rebalance_dates = all_dates
+        
+        # Filter to valid rebalance dates (after warmup period)
+        warmup = max(self.config.SMA_200, self.config.HTF_LOOKBACK) + 10
+        rebalance_dates = rebalance_dates[warmup:]
+        
+        # Initialize tracking
         cash = self.config.INITIAL_CAPITAL
         positions = {}  # ticker -> {'shares': n, 'entry_price': p, 'entry_date': d}
         equity_curve = []
         trades = []
+        current_weights = {}
         
-        # Trading days
-        trading_days = prices.index[max(momentum_lookback, 50):]
+        # Get tickers
+        all_tickers = df.index.get_level_values('Ticker').unique()
         
-        for i, date in enumerate(trading_days):
-            # Calculate current portfolio value
+        for i, date in enumerate(all_dates[warmup:]):
+            # Calculate portfolio value
             portfolio_value = cash
             for ticker, pos in positions.items():
-                if ticker in prices.columns and not pd.isna(prices.loc[date, ticker]):
-                    portfolio_value += pos['shares'] * prices.loc[date, ticker]
+                try:
+                    current_price = df.loc[(ticker, date), 'Adj Close']
+                    if not pd.isna(current_price):
+                        portfolio_value += pos['shares'] * current_price
+                except:
+                    pass
             
             equity_curve.append({'date': date, 'value': portfolio_value})
             
-            # Process exits first
-            tickers_to_close = []
-            for ticker, pos in positions.items():
-                if ticker not in prices.columns:
-                    continue
-                    
-                current_price = prices.loc[date, ticker]
-                if pd.isna(current_price):
-                    continue
+            # Check for rebalance
+            if date in rebalance_dates.values:
+                # Get data up to this date (no look-ahead)
+                df_snapshot = df[df.index.get_level_values('Date') <= date]
                 
-                # Check exit signal
-                should_exit = exit_signals.loc[date, ticker] if ticker in exit_signals.columns else False
-                
-                if should_exit:
-                    # Close position
-                    exit_value = pos['shares'] * current_price
-                    trade_cost = self.config.TRADE_FEE
-                    cash += exit_value - trade_cost
+                # Run strategy
+                try:
+                    new_weights = self.strategy.filter.filter_universe(df_snapshot, verbose=False)
                     
-                    # Record trade
-                    pnl = (current_price - pos['entry_price']) * pos['shares']
-                    pnl_pct = (current_price / pos['entry_price'] - 1) * 100
-                    
-                    trades.append({
-                        'ticker': ticker,
-                        'entry_date': pos['entry_date'],
-                        'exit_date': date,
-                        'entry_price': pos['entry_price'],
-                        'exit_price': current_price,
-                        'shares': pos['shares'],
-                        'pnl': pnl,
-                        'pnl_pct': pnl_pct
-                    })
-                    
-                    tickers_to_close.append(ticker)
-            
-            for ticker in tickers_to_close:
-                del positions[ticker]
-            
-            # Process entries (limit positions)
-            if len(positions) < self.config.MAX_POSITIONS:
-                for ticker in prices.columns:
-                    if ticker in positions:
-                        continue
-                    
-                    if ticker not in entry_signals.columns:
-                        continue
-                    
-                    current_price = prices.loc[date, ticker]
-                    if pd.isna(current_price) or current_price <= 0:
-                        continue
-                    
-                    # Check entry signal
-                    should_enter = entry_signals.loc[date, ticker]
-                    
-                    if should_enter and len(positions) < self.config.MAX_POSITIONS:
-                        # Calculate position size
-                        position_value = min(
-                            portfolio_value * self.config.MAX_POSITION_PCT,
-                            cash * 0.95  # Keep some cash buffer
-                        )
+                    if new_weights:
+                        # Get returns for optimization
+                        returns_dict = {}
+                        for ticker in all_tickers:
+                            try:
+                                ticker_data = df_snapshot.loc[ticker]
+                                returns_dict[ticker] = ticker_data['Adj Close'].pct_change()
+                            except:
+                                continue
+                        returns_data = pd.DataFrame(returns_dict)
                         
-                        if position_value < 1000:  # Min position size
+                        target_weights = self.strategy.optimizer.optimize_weights(new_weights, returns_data)
+                    else:
+                        target_weights = {}
+                except:
+                    target_weights = {}
+                
+                # Rebalance positions
+                if target_weights != current_weights:
+                    # Close positions not in target
+                    for ticker in list(positions.keys()):
+                        if ticker not in target_weights or target_weights.get(ticker, 0) < 0.01:
+                            try:
+                                exit_price = df.loc[(ticker, date), 'Adj Close']
+                                if not pd.isna(exit_price):
+                                    pos = positions[ticker]
+                                    cash += pos['shares'] * exit_price - self.config.TRADE_FEE
+                                    
+                                    pnl = (exit_price - pos['entry_price']) * pos['shares']
+                                    trades.append({
+                                        'ticker': ticker,
+                                        'entry_date': pos['entry_date'],
+                                        'exit_date': date,
+                                        'entry_price': pos['entry_price'],
+                                        'exit_price': exit_price,
+                                        'shares': pos['shares'],
+                                        'pnl': pnl
+                                    })
+                                    del positions[ticker]
+                            except:
+                                pass
+                    
+                    # Open/adjust positions
+                    for ticker, weight in target_weights.items():
+                        if weight < 0.01:
                             continue
                         
-                        shares = int(position_value / current_price)
-                        if shares <= 0:
-                            continue
-                        
-                        # Entry with slippage
-                        slippage = current_price * (self.config.SLIPPAGE_BPS / 10000)
-                        entry_price = current_price + slippage
-                        cost = shares * entry_price + self.config.TRADE_FEE
-                        
-                        if cost <= cash:
-                            cash -= cost
-                            positions[ticker] = {
-                                'shares': shares,
-                                'entry_price': entry_price,
-                                'entry_date': date
-                            }
+                        try:
+                            current_price = df.loc[(ticker, date), 'Adj Close']
+                            if pd.isna(current_price) or current_price <= 0:
+                                continue
+                            
+                            target_value = portfolio_value * weight
+                            
+                            if ticker in positions:
+                                # Already have position - skip for simplicity
+                                continue
+                            else:
+                                # Open new position
+                                shares = int(min(target_value, cash * 0.95) / current_price)
+                                if shares > 0:
+                                    cost = shares * current_price + self.config.TRADE_FEE
+                                    if cost <= cash:
+                                        cash -= cost
+                                        positions[ticker] = {
+                                            'shares': shares,
+                                            'entry_price': current_price,
+                                            'entry_date': date
+                                        }
+                        except:
+                            pass
+                    
+                    current_weights = target_weights.copy()
         
         # Close remaining positions
-        final_date = trading_days[-1]
-        for ticker, pos in positions.items():
-            if ticker in prices.columns:
-                current_price = prices.loc[final_date, ticker]
-                if not pd.isna(current_price):
-                    cash += pos['shares'] * current_price
-                    
-                    pnl = (current_price - pos['entry_price']) * pos['shares']
-                    pnl_pct = (current_price / pos['entry_price'] - 1) * 100
-                    
+        final_date = all_dates[-1]
+        for ticker, pos in list(positions.items()):
+            try:
+                exit_price = df.loc[(ticker, final_date), 'Adj Close']
+                if not pd.isna(exit_price):
+                    cash += pos['shares'] * exit_price
+                    pnl = (exit_price - pos['entry_price']) * pos['shares']
                     trades.append({
                         'ticker': ticker,
                         'entry_date': pos['entry_date'],
                         'exit_date': final_date,
                         'entry_price': pos['entry_price'],
-                        'exit_price': current_price,
+                        'exit_price': exit_price,
                         'shares': pos['shares'],
-                        'pnl': pnl,
-                        'pnl_pct': pnl_pct
+                        'pnl': pnl
                     })
+            except:
+                pass
         
-        # Create equity curve
+        # Create results
         equity_df = pd.DataFrame(equity_curve).set_index('date')['value']
-        
-        # Calculate metrics
         trades_df = pd.DataFrame(trades) if trades else pd.DataFrame()
+        
         metrics = self._calculate_metrics(equity_df, trades_df)
         
         return BacktestResult(
@@ -520,65 +812,49 @@ class QuallamaggieBacktester:
             calmar=metrics['calmar'],
             win_rate=metrics['win_rate'],
             total_trades=metrics['total_trades'],
+            avg_holding_days=metrics['avg_holding_days'],
             equity_curve=equity_df,
             trades=trades_df
         )
     
-    def _calculate_metrics(
-        self,
-        equity_curve: pd.Series,
-        trades: pd.DataFrame
-    ) -> Dict:
+    def _calculate_metrics(self, equity: pd.Series, trades: pd.DataFrame) -> Dict:
         """Calculate performance metrics."""
+        final_value = equity.iloc[-1] if len(equity) > 0 else self.config.INITIAL_CAPITAL
         
-        # Final value
-        final_value = equity_curve.iloc[-1] if len(equity_curve) > 0 else self.config.INITIAL_CAPITAL
+        returns = equity.pct_change().dropna()
         
-        # Returns
-        returns = equity_curve.pct_change().dropna()
+        years = len(equity) / 252
+        cagr = (final_value / self.config.INITIAL_CAPITAL) ** (1 / max(years, 0.01)) - 1
         
-        # CAGR
-        years = len(equity_curve) / 252
-        if years > 0 and self.config.INITIAL_CAPITAL > 0:
-            cagr = (final_value / self.config.INITIAL_CAPITAL) ** (1 / years) - 1
-        else:
-            cagr = 0
-        
-        # Sharpe Ratio (assuming 4% risk-free rate)
         if len(returns) > 0 and returns.std() > 0:
-            excess_returns = returns - (0.04 / 252)
-            sharpe = np.sqrt(252) * excess_returns.mean() / returns.std()
+            sharpe = (returns.mean() * 252 - 0.04) / (returns.std() * np.sqrt(252))
         else:
             sharpe = 0
         
-        # Sortino Ratio
-        if len(returns) > 0:
-            downside_returns = returns[returns < 0]
-            if len(downside_returns) > 0 and downside_returns.std() > 0:
-                sortino = np.sqrt(252) * returns.mean() / downside_returns.std()
-            else:
-                sortino = sharpe
+        downside = returns[returns < 0]
+        if len(downside) > 0 and downside.std() > 0:
+            sortino = (returns.mean() * 252 - 0.04) / (downside.std() * np.sqrt(252))
         else:
-            sortino = 0
+            sortino = sharpe
         
-        # Max Drawdown
-        rolling_max = equity_curve.expanding().max()
-        drawdown = (equity_curve - rolling_max) / rolling_max
+        rolling_max = equity.expanding().max()
+        drawdown = (equity - rolling_max) / rolling_max
         max_drawdown = drawdown.min()
         
-        # Calmar Ratio
-        if max_drawdown != 0:
-            calmar = cagr / abs(max_drawdown)
-        else:
-            calmar = 0
+        calmar = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
         
-        # Win Rate
         total_trades = len(trades)
         if total_trades > 0:
-            winning_trades = len(trades[trades['pnl'] > 0])
-            win_rate = winning_trades / total_trades
+            win_rate = (trades['pnl'] > 0).mean()
+            if 'exit_date' in trades.columns and 'entry_date' in trades.columns:
+                holding_days = (pd.to_datetime(trades['exit_date']) - 
+                               pd.to_datetime(trades['entry_date'])).dt.days
+                avg_holding_days = holding_days.mean()
+            else:
+                avg_holding_days = 0
         else:
             win_rate = 0
+            avg_holding_days = 0
         
         return {
             'final_value': final_value,
@@ -588,366 +864,56 @@ class QuallamaggieBacktester:
             'max_drawdown': max_drawdown,
             'calmar': calmar,
             'win_rate': win_rate,
-            'total_trades': total_trades
+            'total_trades': total_trades,
+            'avg_holding_days': avg_holding_days
         }
 
 
-# ============== DUAL MOMENTUM BACKTEST (for comparison) ==============
+# ============== MAIN ENTRY POINT ==============
 
-def run_dual_momentum_backtest(
-    prices: pd.DataFrame,
-    initial_capital: float = 100_000.0,
-    lookback: int = 252,
-    defensive_ticker: str = 'SPY'
+def run_quallamaggie_backtest(
+    tickers: List[str] = None,
+    start_date: str = '2020-01-01',
+    end_date: str = None
 ) -> BacktestResult:
     """
-    Run simple Dual Momentum backtest for comparison.
+    Run complete Quallamaggie strategy backtest.
     
-    Logic:
-    - Calculate 12-month return for all assets
-    - If best asset has positive return, hold it 100%
-    - If negative, hold defensive asset
-    """
-    print("\nRunning Dual Momentum backtest...")
-    
-    # Simple momentum calculation
-    momentum = prices.pct_change(lookback)
-    
-    # Ensure we have defensive asset
-    if defensive_ticker not in prices.columns:
-        defensive_ticker = prices.columns[0]
-    
-    # Initialize
-    cash = initial_capital
-    current_position = None
-    shares = 0
-    equity_curve = []
-    trades = []
-    
-    trading_days = prices.index[lookback + 10:]
-    
-    for date in trading_days:
-        # Current portfolio value
-        if current_position and current_position in prices.columns:
-            current_price = prices.loc[date, current_position]
-            if not pd.isna(current_price):
-                portfolio_value = shares * current_price
-            else:
-                portfolio_value = cash
-        else:
-            portfolio_value = cash
+    Args:
+        tickers: List of ticker symbols (default: sample universe)
+        start_date: Backtest start date
+        end_date: Backtest end date
         
-        equity_curve.append({'date': date, 'value': portfolio_value + cash if current_position else cash})
-        
-        # Monthly rebalance (first day of month)
-        if date.day <= 5:
-            # Get momentum for this date
-            mom = momentum.loc[date].dropna()
-            if len(mom) == 0:
-                continue
-            
-            # Find best asset
-            best_ticker = mom.idxmax()
-            best_mom = mom[best_ticker]
-            
-            # Determine target position
-            if best_mom > 0:
-                target = best_ticker
-            else:
-                target = defensive_ticker
-            
-            # Rebalance if needed
-            if target != current_position:
-                # Sell current position
-                if current_position and shares > 0:
-                    sell_price = prices.loc[date, current_position]
-                    if not pd.isna(sell_price):
-                        cash += shares * sell_price - 3  # $3 fee
-                        trades.append({
-                            'ticker': current_position,
-                            'action': 'SELL',
-                            'date': date,
-                            'price': sell_price,
-                            'shares': shares
-                        })
-                        shares = 0
-                
-                # Buy new position
-                if target in prices.columns:
-                    buy_price = prices.loc[date, target]
-                    if not pd.isna(buy_price) and buy_price > 0:
-                        shares = int((cash - 3) / buy_price)  # $3 fee
-                        if shares > 0:
-                            cash -= shares * buy_price + 3
-                            current_position = target
-                            trades.append({
-                                'ticker': target,
-                                'action': 'BUY',
-                                'date': date,
-                                'price': buy_price,
-                                'shares': shares
-                            })
-    
-    # Final value
-    final_date = trading_days[-1]
-    if current_position and current_position in prices.columns:
-        final_price = prices.loc[final_date, current_position]
-        if not pd.isna(final_price):
-            final_value = cash + shares * final_price
-        else:
-            final_value = cash
-    else:
-        final_value = cash
-    
-    # Create equity curve
-    equity_df = pd.DataFrame(equity_curve).set_index('date')['value']
-    
-    # Calculate metrics
-    years = len(equity_df) / 252
-    cagr = (final_value / initial_capital) ** (1/years) - 1 if years > 0 else 0
-    
-    returns = equity_df.pct_change().dropna()
-    sharpe = np.sqrt(252) * returns.mean() / returns.std() if len(returns) > 0 and returns.std() > 0 else 0
-    
-    downside = returns[returns < 0]
-    sortino = np.sqrt(252) * returns.mean() / downside.std() if len(downside) > 0 and downside.std() > 0 else sharpe
-    
-    rolling_max = equity_df.expanding().max()
-    drawdown = (equity_df - rolling_max) / rolling_max
-    max_dd = drawdown.min()
-    
-    calmar = cagr / abs(max_dd) if max_dd != 0 else 0
-    
-    trades_df = pd.DataFrame(trades)
-    
-    return BacktestResult(
-        strategy_name="Dual Momentum",
-        final_value=final_value,
-        cagr=cagr,
-        sharpe=sharpe,
-        sortino=sortino,
-        max_drawdown=max_dd,
-        calmar=calmar,
-        win_rate=0.526,  # Typical for momentum strategies
-        total_trades=len(trades_df),
-        equity_curve=equity_df,
-        trades=trades_df
-    )
-
-
-# ============== HRP BACKTEST (for comparison) ==============
-
-def run_hrp_backtest(
-    prices: pd.DataFrame,
-    initial_capital: float = 100_000.0,
-    rebalance_freq: str = 'monthly'
-) -> BacktestResult:
+    Returns:
+        BacktestResult with performance metrics
     """
-    Run simplified HRP (equal risk contribution) backtest for comparison.
+    if tickers is None:
+        tickers = ['NVDA', 'TSLA', 'AAPL', 'AMD', 'MSFT', 'GOOGL', 'META', 'AMZN',
+                   'SPY', 'QQQ', 'IWM', 'XLK', 'SOXX', 'SMH']
     
-    Uses inverse volatility weighting as a simple proxy for HRP.
-    """
-    print("\nRunning HRP backtest...")
+    # Fetch data
+    df = fetch_data(tickers, start=start_date, end=end_date)
     
-    # Calculate rolling volatility
-    returns = prices.pct_change()
-    rolling_vol = returns.rolling(63).std() * np.sqrt(252)
-    
-    # Inverse volatility weights
-    inv_vol = 1 / rolling_vol
-    weights = inv_vol.div(inv_vol.sum(axis=1), axis=0)
-    
-    # Initialize
-    cash = initial_capital
-    portfolio_value = initial_capital
-    equity_curve = []
-    
-    # Simple portfolio simulation
-    trading_days = prices.index[63:]
-    
-    for date in trading_days:
-        # Get returns for this day
-        daily_ret = returns.loc[date]
-        w = weights.loc[date]
-        
-        # Portfolio return (weighted average)
-        valid_mask = ~(daily_ret.isna() | w.isna())
-        if valid_mask.sum() > 0:
-            port_ret = (daily_ret[valid_mask] * w[valid_mask]).sum()
-        else:
-            port_ret = 0
-        
-        portfolio_value *= (1 + port_ret)
-        equity_curve.append({'date': date, 'value': portfolio_value})
-    
-    # Create equity curve
-    equity_df = pd.DataFrame(equity_curve).set_index('date')['value']
-    
-    # Calculate metrics
-    final_value = equity_df.iloc[-1]
-    years = len(equity_df) / 252
-    cagr = (final_value / initial_capital) ** (1/years) - 1 if years > 0 else 0
-    
-    port_returns = equity_df.pct_change().dropna()
-    sharpe = np.sqrt(252) * port_returns.mean() / port_returns.std() if len(port_returns) > 0 and port_returns.std() > 0 else 0
-    
-    downside = port_returns[port_returns < 0]
-    sortino = np.sqrt(252) * port_returns.mean() / downside.std() if len(downside) > 0 and downside.std() > 0 else sharpe
-    
-    rolling_max = equity_df.expanding().max()
-    drawdown = (equity_df - rolling_max) / rolling_max
-    max_dd = drawdown.min()
-    
-    calmar = cagr / abs(max_dd) if max_dd != 0 else 0
-    
-    return BacktestResult(
-        strategy_name="HRP",
-        final_value=final_value,
-        cagr=cagr,
-        sharpe=sharpe,
-        sortino=sortino,
-        max_drawdown=max_dd,
-        calmar=calmar,
-        win_rate=0.534,  # Typical for diversified strategies
-        total_trades=12 * int(years),  # Monthly rebalances
-        equity_curve=equity_df,
-        trades=pd.DataFrame()
-    )
-
-
-# ============== MAIN COMPARISON ==============
-
-def run_strategy_comparison(
-    save_results: bool = True,
-    output_path: str = None
-) -> pd.DataFrame:
-    """
-    Run full strategy comparison across momentum timeframes.
-    
-    Compares:
-    - Qual_1M: Quallamaggie with 1-month momentum
-    - Qual_3M: Quallamaggie with 3-month momentum
-    - Qual_6M: Quallamaggie with 6-month momentum
-    - Qual_All: Quallamaggie with combined momentum
-    - Dual Momentum: Traditional momentum strategy
-    - HRP: Hierarchical Risk Parity
-    """
-    print("=" * 60)
-    print("STRATEGY COMPARISON: Quallamaggie vs Dual Momentum vs HRP")
-    print("=" * 60)
-    
-    # Load data
-    loader = QuallamaggieDataLoader()
-    prices = loader.fetch_prices()
-    volume = loader.fetch_volume()
-    
-    # Align data
-    common_dates = prices.index.intersection(volume.index)
-    prices = prices.loc[common_dates]
-    volume = volume.loc[common_dates]
-    
-    # Initialize backtester
-    backtester = QuallamaggieBacktester()
-    
-    # Run Quallamaggie with different momentum periods
-    results = []
-    
-    # 1-Month Momentum
-    result_1m = backtester.run_backtest(
-        prices, volume,
-        momentum_lookback=21,
-        trailing_ema=10,
-        strategy_name="Qual_1M"
-    )
-    results.append(result_1m)
-    
-    # 3-Month Momentum
-    result_3m = backtester.run_backtest(
-        prices, volume,
-        momentum_lookback=63,
-        trailing_ema=10,
-        strategy_name="Qual_3M"
-    )
-    results.append(result_3m)
-    
-    # 6-Month Momentum
-    result_6m = backtester.run_backtest(
-        prices, volume,
-        momentum_lookback=126,
-        trailing_ema=10,
-        strategy_name="Qual_6M"
-    )
-    results.append(result_6m)
-    
-    # Combined (average of all)
-    # Use 3-month as representative for "All"
-    result_all = backtester.run_backtest(
-        prices, volume,
-        momentum_lookback=84,  # ~4 months (between 3 and 6)
-        trailing_ema=15,
-        strategy_name="Qual_All"
-    )
-    results.append(result_all)
-    
-    # Dual Momentum
-    result_dm = run_dual_momentum_backtest(prices)
-    results.append(result_dm)
-    
-    # HRP
-    result_hrp = run_hrp_backtest(prices)
-    results.append(result_hrp)
-    
-    # Create comparison table
-    comparison_data = []
-    for r in results:
-        comparison_data.append({
-            'Strategy': r.strategy_name,
-            'Final Value': f"${r.final_value:,.0f}",
-            'CAGR': f"{r.cagr*100:.2f}%",
-            'Sharpe': f"{r.sharpe:.3f}",
-            'Sortino': f"{r.sortino:.3f}",
-            'Max DD': f"{r.max_drawdown*100:.2f}%",
-            'Calmar': f"{r.calmar:.3f}",
-            'Win Rate': f"{r.win_rate*100:.1f}%"
-        })
-    
-    comparison_df = pd.DataFrame(comparison_data)
-    
-    # Sort by CAGR (descending)
-    comparison_df['CAGR_sort'] = comparison_df['CAGR'].str.rstrip('%').astype(float)
-    comparison_df = comparison_df.sort_values('CAGR_sort', ascending=False).drop('CAGR_sort', axis=1)
+    # Run backtest
+    backtester = QullamaggieBacktester()
+    result = backtester.run_backtest(df, strategy_name="Quallamaggie_MV")
     
     # Print results
-    print("\n" + "=" * 80)
-    print("STRATEGY COMPARISON RESULTS")
-    print("=" * 80)
-    print(comparison_df.to_string(index=False))
-    print("\n")
+    print("\n" + "=" * 60)
+    print("BACKTEST RESULTS")
+    print("=" * 60)
+    print(f"Final Value: ${result.final_value:,.0f}")
+    print(f"CAGR: {result.cagr*100:.2f}%")
+    print(f"Sharpe: {result.sharpe:.3f}")
+    print(f"Sortino: {result.sortino:.3f}")
+    print(f"Max Drawdown: {result.max_drawdown*100:.2f}%")
+    print(f"Calmar: {result.calmar:.3f}")
+    print(f"Win Rate: {result.win_rate*100:.1f}%")
+    print(f"Total Trades: {result.total_trades}")
+    print(f"Avg Holding Days: {result.avg_holding_days:.1f}")
     
-    # Determine best momentum period
-    qual_results = [r for r in results if r.strategy_name.startswith('Qual_')]
-    best_qual = max(qual_results, key=lambda x: x.cagr)
-    
-    print("=" * 80)
-    print("RECOMMENDATION")
-    print("=" * 80)
-    print(f"\nBest Quallamaggie variant: {best_qual.strategy_name}")
-    print(f"  CAGR: {best_qual.cagr*100:.2f}%")
-    print(f"  Sharpe: {best_qual.sharpe:.3f}")
-    print(f"  Max Drawdown: {best_qual.max_drawdown*100:.2f}%")
-    print(f"\nThe {best_qual.strategy_name.split('_')[1]} momentum lookback period performed best.")
-    
-    # Save results
-    if save_results:
-        output_path = output_path or "strategy_comparison_results.csv"
-        comparison_df.to_csv(output_path, index=False)
-        print(f"\nResults saved to: {output_path}")
-    
-    return comparison_df
+    return result
 
-
-# ============== ENTRY POINT ==============
 
 if __name__ == "__main__":
-    # Run comparison
-    results_df = run_strategy_comparison(save_results=True)
+    result = run_quallamaggie_backtest()

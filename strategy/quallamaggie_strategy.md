@@ -1,242 +1,319 @@
-# Quallamaggie (Kristjan Kullamägi) Trading Strategy
+# Quallamaggie Swing Trading Strategy
 
 ## Executive Summary
 
-Kristjan Kullamägi, known as "Qullamaggie," is a legendary Swedish day/swing trader who turned a small account into tens of millions using a systematic **momentum breakout strategy**. His approach focuses on capturing explosive moves in leading stocks through precise pattern recognition, disciplined entries, and asymmetric risk-reward management.
+A systematic **momentum breakout swing trading pipeline** based on Kristjan Kullamägi's methodology, implemented in Python using `pandas` for vectorized filtering and `Riskfolio-Lib` for portfolio optimization.
+
+> **Key Insight**: Focus on capturing explosive moves in leading stocks through precise pattern recognition, strict filtering criteria, and Mean-Variance optimized position sizing.
 
 ---
 
-## Core Philosophy
+## Architecture Overview
 
-> "I'm looking for stocks that can go up 20%, 50%, 100% or more. I'm willing to take many small losses to catch those big winners."
-
-**Key Principles:**
-- **Low win rate, massive winners**: Expects 25-35% win rate, but winners can be 10R-50R+
-- **Momentum begets momentum**: Focus on stocks already showing relative strength
-- **Patience over activity**: Most time spent in cash waiting for perfect setups
-- **Pattern recognition over prediction**: Trade what you see, not what you think
-
----
-
-## Strategy Components
-
-### 1. Universe Selection (Stock Screening)
-
-| Criteria | Requirement |
-|----------|-------------|
-| **Performance Rank** | Top 7% performers over 1, 3, and 6 months |
-| **Price Action** | Above 50 SMA and 200 SMA (rising) |
-| **Relative Strength** | RS Line at or near 52-week highs |
-| **Volume Profile** | Above average daily volume (liquidity) |
-| **Market Cap** | Mid-cap to large-cap preferred for liquidity |
-
-**Screening Process:**
-1. Scan for top momentum stocks (top 7% by 1/3/6-month returns)
-2. Filter for stocks with RS Line at new highs
-3. Look for recent surge (30-100% in 1-3 months)
-4. Wait for consolidation pattern to form
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    QullamaggieStrategy Pipeline                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────────┐    ┌──────────────────┐    ┌──────────────┐  │
+│   │  DATA INGESTION  │ -> │  MODULE 1:       │ -> │  MODULE 2:   │  │
+│   │                  │    │  FILTERING       │    │  OPTIMIZATION│  │
+│   │  MultiIndex      │    │                  │    │              │  │
+│   │  Panel Data      │    │  Liquidity +     │    │  Riskfolio   │  │
+│   │  (Ticker, Date)  │    │  Momentum +      │    │  Mean-Var    │  │
+│   │                  │    │  Trend +         │    │  Sharpe Max  │  │
+│   │                  │    │  Consolidation   │    │              │  │
+│   └──────────────────┘    └──────────────────┘    └──────────────┘  │
+│                                                                      │
+│   Output: {ticker: final_weight} dictionary                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### 2. Chart Patterns & Setups
+## Input Data Specification
 
-Quallamaggie focuses on **four primary patterns** that occur after a significant price surge:
+### Data Structure
 
-#### A. High Tight Flag (HTF)
-- **Setup**: 90-100%+ surge in 1-8 weeks
-- **Consolidation**: 10-25% pullback maximum
-- **Duration**: 1-5 weeks of tight sideways action
-- **Volume**: Drying up during consolidation
-- **Entry**: Break above flag resistance on volume
+```python
+# Required Format: Pandas DataFrame with MultiIndex
+# Level 0: 'Ticker'
+# Level 1: 'Date'
+# Columns: ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+```
 
-#### B. VCP (Volatility Contraction Pattern)
-- **Setup**: Series of higher lows with tightening range
-- **Contractions**: 3-6 price contractions from left to right
-- **Volume**: Decreases with each contraction
-- **Pivot Point**: Final contraction creates tight pivot
-- **Entry**: Break above pivot on expanding volume
+### Critical Price Column Rules
 
-#### C. Flat Base / Cup & Handle
-- **Setup**: Rounded or flat consolidation base
-- **Duration**: 2-8 weeks typically
-- **Depth**: 15-35% pullback from highs
-- **Handle**: Small 5-15% pullback near highs
-- **Entry**: Break above handle resistance
+| Calculation Type | Use Column | Rationale |
+|------------------|------------|-----------|
+| Momentum & Returns | **Adj Close** | Accounts for dividends/splits |
+| Moving Averages | **Adj Close** | Consistent with return calculations |
+| Price Level Filters (>$5) | **Close (Raw)** | Actual tradeable price |
+| Dollar Volume | **Close × Volume** | Real market liquidity |
 
-#### D. Episodic Pivot (EP)
-- **Setup**: Gap up of 10%+ on massive volume
-- **Catalyst**: Earnings beat, major news, contract win
-- **Volume**: 3-10x average volume
-- **Action**: Stock holds/builds on initial gap
-- **Entry**: Break of opening range high (ORH)
+> **⚠️ WARNING**: Mixing adjusted/raw prices incorrectly causes look-ahead bias and split-adjustment errors.
 
 ---
 
-### 3. Entry Criteria (Opening Range High - ORH)
+## Module 1: Filtering Logic
 
-**Entry Signal**: Price breaks the high of a specified opening timeframe
+All filters applied sequentially using vectorized pandas operations.
 
-| Timeframe | When to Use |
-|-----------|-------------|
-| **1-minute ORH** | Aggressive entries, episodic pivots |
-| **5-minute ORH** | Standard breakout entries |
-| **30-minute ORH** | More conservative, fewer shakeouts |
-| **60-minute ORH** | Confirmed breakouts with lower risk |
+### 1.1 Liquidity Filters
 
-**Entry Checklist:**
-- [ ] Pattern is complete (flag, VCP, or EP)
-- [ ] Price breaking above pivot point
-- [ ] Volume expanding on breakout (1.5x+ average)
-- [ ] Market conditions favorable (uptrend or neutral)
-- [ ] RS Line confirming (at or near highs)
+| Rule | Implementation |
+|------|----------------|
+| Raw Close > $5.00 | `df['Close'] > 5.0` |
+| 20-Day Avg Dollar Volume > $20M | `(df['Close'] * df['Volume']).rolling(20).mean() > 20_000_000` |
 
----
+### 1.2 Momentum Filters (The Engine)
 
-### 4. Stop Loss & Risk Management
+| Rule | Threshold | Implementation |
+|------|-----------|----------------|
+| 3-Month Return | ≥ 30% | `df['Adj Close'].pct_change(63) >= 0.30` |
+| 1-Month Return | ≥ 10% | `df['Adj Close'].pct_change(21) >= 0.10` |
+| Relative Strength vs SPY | Stock > SPY | `stock_3m_return > spy_3m_return` |
 
-#### Initial Stop Placement
+### 1.3 Trend Architecture Filters
 
 | Rule | Description |
 |------|-------------|
-| **Low of Day (LOD)** | Primary stop: low of the breakout day |
-| **ATR-Based** | Stop should be < 1 ATR ideally |
-| **ADR Check** | Stop = 1/3 to 1/2 of ADR is "high star" setup |
+| **Perfect EMA Alignment** | Adj Close > SMA_10 > SMA_20 > SMA_50 |
+| **Above 200 SMA** | Adj Close > SMA_200 |
+| **Smooth Uptrend** | Linear regression slope of SMA_50 over 10 days > 0 |
 
-#### Position Sizing
+```python
+# Perfect Alignment Check
+perfect_alignment = (
+    (adj_close > sma_10) & 
+    (sma_10 > sma_20) & 
+    (sma_20 > sma_50) & 
+    (adj_close > sma_200)
+)
 
+# SMA_50 Slope (regression over 10 days)
+from scipy.stats import linregress
+slope = linregress(range(10), sma_50.iloc[-10:]).slope
+valid_slope = slope > 0
 ```
-Position Size = (Account * Risk %) / (Entry - Stop)
 
-Example:
-- Account: $100,000
-- Risk per trade: 0.5% = $500
-- Entry: $50.00
-- Stop: $48.00 (4% risk)
-- Position Size: $500 / $2.00 = 250 shares
-- Position Value: 250 × $50 = $12,500 (12.5% of account)
+### 1.4 Consolidation Filters (The Setup)
+
+| Pattern | Rule | Implementation |
+|---------|------|----------------|
+| **High Tight Flag** | Current ≥ 85% of 126-day High | `adj_close >= 0.85 * high.rolling(126).max()` |
+| **Volatility Contraction** | Current ATR(14) < 20-day Avg ATR | `atr_14 < atr_14.rolling(20).mean()` |
+
+```python
+# Volatility Contraction Pattern (VCP)
+current_atr = df['ATR_14']
+avg_atr = df['ATR_14'].rolling(20).mean()
+volatility_contracting = current_atr < avg_atr
 ```
 
-**Risk Parameters:**
+---
 
-| Parameter | Conservative | Standard | Aggressive |
-|-----------|--------------|----------|------------|
-| **Risk per Trade** | 0.25% | 0.5% | 1.0% |
-| **Max Position** | 15% | 20% | 25% |
-| **Max Exposure** | 100% | 150% | 200% (margin) |
-| **Max Correlated** | 30% | 40% | 50% |
+## Module 2: Portfolio Optimization
+
+### Trigger Condition
+Run optimization ONLY on tickers that pass ALL Module 1 filters.
+
+### Methodology
+
+| Parameter | Value |
+|-----------|-------|
+| **Library** | Riskfolio-Lib |
+| **Data Input** | Adj Close returns for valid tickers |
+| **Lookback Window** | 126 trading days (6 months) |
+| **Model** | Mean-Variance (MV) |
+| **Objective** | Maximize Sharpe Ratio |
+
+### Constraints
+
+| Constraint | Value | Rationale |
+|------------|-------|-----------|
+| Max weight per asset | 20% | Diversification limit |
+| Short selling | Prohibited | Long-only strategy |
+| Min weight | 0% | Can exclude assets |
+
+### Risk Control Layer (Post-Optimization)
+
+After optimization, apply a **Technical Risk Check**:
+
+```python
+# For each asset:
+technical_risk = (entry_price - stop_loss) / entry_price
+
+# Risk budget check:
+position_risk = optimized_weight * technical_risk
+
+# Constraint: Position risk must not exceed 1% of account
+if position_risk > 0.01:
+    scaled_weight = 0.01 / technical_risk
+else:
+    scaled_weight = optimized_weight
+```
+
+**Example:**
+
+| Ticker | Opt Weight | Technical Risk | Position Risk | Action |
+|--------|------------|----------------|---------------|--------|
+| NVDA | 20% | 6% | 1.2% | Scale to 16.7% |
+| AAPL | 15% | 4% | 0.6% | Keep 15% |
+| TSLA | 20% | 8% | 1.6% | Scale to 12.5% |
 
 ---
 
-### 5. Trade Management & Exits
+## Implementation Blueprint
 
-#### Scaling Out Strategy
+### Class Structure
 
-| Phase | Action | Timing |
-|-------|--------|--------|
-| **Phase 1** | Sell 1/3 to 1/2 of position | Day 3-5 |
-| **Phase 2** | Move stop to breakeven | After Phase 1 |
-| **Phase 3** | Trail with moving average | Remaining position |
+```python
+class QullamaggieStrategy:
+    """
+    Systematic Quallamaggie swing trading pipeline.
+    
+    Modules:
+    1. filter_universe() - Apply momentum/consolidation filters
+    2. optimize_weights() - Riskfolio-Lib MV optimization
+    """
+    
+    def __init__(self, 
+                 min_price: float = 5.0,
+                 min_dollar_volume: float = 20_000_000,
+                 momentum_3m_threshold: float = 0.30,
+                 momentum_1m_threshold: float = 0.10,
+                 htf_threshold: float = 0.85,
+                 max_weight: float = 0.20,
+                 max_position_risk: float = 0.01):
+        """Initialize with configurable thresholds."""
+        pass
+    
+    def filter_universe(self, df: pd.DataFrame) -> List[str]:
+        """
+        Apply all filtering rules to multi-asset universe.
+        
+        Args:
+            df: MultiIndex DataFrame (Ticker, Date)
+            
+        Returns:
+            List of valid tickers passing all criteria
+        """
+        pass
+    
+    def optimize_weights(self, 
+                         valid_tickers: List[str],
+                         returns_data: pd.DataFrame) -> Dict[str, float]:
+        """
+        Run Mean-Variance optimization on filtered universe.
+        
+        Args:
+            valid_tickers: Tickers passing Module 1 filters
+            returns_data: Adj Close returns DataFrame
+            
+        Returns:
+            Dictionary {ticker: final_weight} after risk adjustments
+        """
+        pass
+```
 
-#### Trailing Stop Rules
+### Helper Functions
 
-| Stock Speed | Moving Average | Exit Signal |
-|-------------|----------------|-------------|
-| **Fast Mover** | 10-day EMA | Close below 10 EMA |
-| **Normal** | 20-day EMA | Close below 20 EMA |
-| **Slow Grind** | 50-day SMA | Close below 50 SMA |
-
-> **Critical Rule**: Exit on a **CLOSE** below the MA, not intraday touches (avoiding shakeouts)
+```python
+def fetch_data(tickers: List[str], 
+               start: str = '2023-01-01',
+               end: str = None) -> pd.DataFrame:
+    """
+    Fetch and format data into required MultiIndex structure.
+    
+    Args:
+        tickers: List of ticker symbols
+        start: Start date string
+        end: End date (default: today)
+        
+    Returns:
+        MultiIndex DataFrame (Ticker, Date) with OHLCV columns
+    """
+    import yfinance as yf
+    
+    data = yf.download(tickers, start=start, end=end)
+    
+    # Reshape to MultiIndex
+    df = data.stack(level=1).reset_index()
+    df.columns = ['Date', 'Ticker', 'Adj Close', 'Close', 
+                  'High', 'Low', 'Open', 'Volume']
+    df = df.set_index(['Ticker', 'Date'])
+    
+    return df
+```
 
 ---
 
-### 6. Technical Indicators
+## Entry & Exit Rules
 
-| Indicator | Purpose | Settings |
-|-----------|---------|----------|
-| **10 EMA** | Fast trailing stop, trend confirmation | Exponential |
-| **20 EMA** | Standard trailing stop | Exponential |
-| **50 SMA** | Intermediate trend, support | Simple |
-| **200 SMA** | Long-term trend filter | Simple |
-| **RS Line** | Relative strength vs S&P 500 | Custom |
-| **Volume** | Breakout confirmation | 50-day average |
+### Entry Criteria (Opening Range High)
+
+| Timeframe | Use Case |
+|-----------|----------|
+| 1-min ORH | Aggressive entries, episodic pivots |
+| 5-min ORH | Standard breakouts |
+| 30-min ORH | Conservative, fewer shakeouts |
+| 60-min ORH | Confirmed breakouts |
+
+**Entry Checklist:**
+- [ ] All Module 1 filters passed
+- [ ] Price breaking pivot on volume (1.5x+ average)
+- [ ] RS Line at/near 52-week high
+- [ ] Market regime favorable (uptrend/neutral)
+
+### Exit Strategy (Tiered EMA)
+
+| Trigger | Action | Position |
+|---------|--------|----------|
+| Daily close < 10 EMA | Sell 25% | 75% remaining |
+| Daily close < 20 EMA | Sell 50% of remaining | 37.5% remaining |
+| Daily close < 50 EMA | Close 100% | 0% |
+
+> **Rule**: Exit on CLOSE below EMA, not intraday touches.
 
 ---
 
-### 7. Fundamental "Rocket Fuel"
-
-While technicals drive entries, fundamentals provide conviction:
-
-| Metric | Ideal | Acceptable |
-|--------|-------|------------|
-| **EPS Growth** | 100%+ | 50%+ |
-| **Revenue Growth** | 100%+ | 25%+ |
-| **Estimates** | Upward revisions | Stable |
-| **Theme/Sector** | Hot theme (AI, EV, etc.) | Strong sector |
-| **Institutional** | Accumulation | Neutral |
-
----
-
-## Expected Performance Metrics
-
-Based on documented track record and strategy characteristics:
+## Expected Performance
 
 | Metric | Expected Range |
 |--------|----------------|
-| **Win Rate** | 25-35% |
-| **Average Winner** | +15% to +30% |
-| **Average Loser** | -3% to -7% |
-| **Win/Loss Ratio** | 3:1 to 5:1 |
-| **Profit Factor** | 2.0 - 4.0 |
-| **Max Drawdown** | 15-30% |
-| **Annual Return** | 50-200%+ (in good years) |
-| **Sharpe Ratio** | 1.0 - 2.5 |
+| Win Rate | 25-35% |
+| Average Winner | +15% to +30% |
+| Average Loser | -3% to -7% |
+| Win/Loss Ratio | 3:1 to 5:1 |
+| Profit Factor | 2.0 - 4.0 |
+| Max Drawdown | 15-30% |
+| Annual Return | 50-200%+ (momentum markets) |
 
-> **Note**: Returns are highly variable. Strategy performs exceptionally in momentum markets (2020, 2021), but struggles in choppy or bear markets.
-
----
-
-## Implementation Checklist
-
-- [ ] Set up momentum screening (top 7% by 1/3/6-month returns)
-- [ ] Build RS Line indicator or use finviz.com
-- [ ] Create watchlist management system
-- [ ] Implement position sizing calculator
-- [ ] Set up alerts for breakout candidates
-- [ ] Study 1000+ historical breakout examples
-- [ ] Paper trade for 3-6 months before live trading
+> **Note**: Strategy excels in strong uptrends (2020, 2021) but struggles in choppy/bear markets.
 
 ---
 
-## Key Differences from Other Strategies
+## Implementation Files
 
-| Aspect | Quallamaggie | Dual Momentum | HRP |
-|--------|--------------|---------------|-----|
-| **Asset Type** | Individual stocks | ETFs/Asset classes | ETFs/Stocks |
-| **Timeframe** | Days to weeks | Months | Months |
-| **Holding Period** | 3 days - 3 months | 6-12 months | Rebalance monthly |
-| **Win Rate** | 25-35% | 50-60% | N/A (allocation) |
-| **Focus** | Explosive moves | Trend following | Risk parity |
-| **Skill Required** | High (discretionary) | Low (systematic) | Low (systematic) |
-| **Time Commitment** | Daily monitoring | Monthly check | Monthly check |
+| File | Description |
+|------|-------------|
+| `strategy/quallamaggie_tools.py` | Core `QullamaggieStrategy` class |
+| `strategy/quallamaggie_backtest.py` | Backtesting framework |
+| `strategy/pipeline/signal_layer.py` | Integration with signal pipeline |
 
 ---
 
 ## References
 
-1. **YouTube**: [QULLAMAGGIE Stock Trading Strategy EXPLAINED](https://www.youtube.com/watch?v=we5LLjFlHCc)
-2. **Qullamaggie Twitch Streams**: Live trading and education
-3. **Mark Minervini**: SEPA methodology (similar approach)
-4. **William O'Neil**: CAN SLIM (foundational concepts)
-5. **Model Book Study**: Historical chart pattern analysis
-
----
-
-## Risk Disclaimer
-
-This strategy requires significant skill, discipline, and experience. The documented returns are exceptional and not typical. Most traders lose money attempting momentum strategies. Paper trade extensively before risking real capital.
+1. **Qullamaggie YouTube/Twitch** - Original methodology
+2. **Mark Minervini** - SEPA methodology (similar)
+3. **William O'Neil** - CAN SLIM foundations
+4. **Riskfolio-Lib** - Portfolio optimization library
 
 ---
 
 ## Version History
 
+- **v2.0.0** (2024-12-25): Refactored with systematic filtering and Riskfolio optimization
 - **v1.0.0** (2024-12-25): Initial documentation from video analysis

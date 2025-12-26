@@ -22,6 +22,18 @@ except ImportError:
     HAS_VBT = False
     print("Warning: vectorbt not installed. Using fallback calculations.")
 
+# Try to import hard asset signals
+try:
+    from ..hard_asset_signals import (
+        HardAssetSignalManager,
+        BTCVolatilityMomentum,
+        GoldRegimeFilter,
+        SilverGoldRatio
+    )
+    HAS_HARD_ASSETS = True
+except ImportError:
+    HAS_HARD_ASSETS = False
+
 
 @dataclass
 class SignalResult:
@@ -297,6 +309,7 @@ class SignalManager:
     def __init__(self):
         self._strategies: Dict[str, BaseStrategy] = {}
         self._results: Dict[str, SignalResult] = {}
+        self._hard_asset_manager = None
         
         # Register default strategies
         self.register_strategy(MomentumStrategy(lookback=21, top_n=5))  # 1M
@@ -304,6 +317,16 @@ class SignalManager:
         self.register_strategy(MomentumStrategy(lookback=126, top_n=5))  # 6M
         self.register_strategy(DualMomentumStrategy())
         self.register_strategy(HRPStrategy())
+        
+        # Register hard asset signals if available
+        if HAS_HARD_ASSETS:
+            self._hard_asset_manager = HardAssetSignalManager()
+            print("   ✓ Hard Asset Signal Manager initialized (BTC, GOLD, SILVER)")
+    
+    @property
+    def hard_assets(self):
+        """Access hard asset signal manager."""
+        return self._hard_asset_manager
     
     def register_strategy(self, strategy: BaseStrategy):
         """Register a strategy."""

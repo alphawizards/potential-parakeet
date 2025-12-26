@@ -132,3 +132,57 @@ Based on historical backtests (2010-2024):
 3. Moskowitz, Ooi, Pedersen (2012). Time Series Momentum
 4. Fama & French (2015). Five-Factor Model
 5. Riskfolio-Lib Documentation: https://github.com/dcajasn/Riskfolio-Lib
+
+---
+
+## Hard Asset Research (BTC, Gold, Silver)
+
+### Key Literature
+
+| Paper | Key Finding | Application |
+|-------|-------------|-------------|
+| **Liu & Tsyvinski (2021)** | Crypto momentum strongest at 7-30d lookback | BTC uses 21d vol-adjusted momentum |
+| **Erb & Harvey (2013)** | Gold performs in negative real yield regimes | Gold uses Real Yield + VIX filter |
+| **Moskowitz et al. (2012)** | Time-series momentum works across all assets | Baseline comparison |
+
+### Specialized Signals vs Baselines
+
+| Asset | Specialized Signal | Baseline (252d Dual Mom) | Hypothesis |
+|-------|-------------------|-------------------------|------------|
+| **BTC** | 21d Vol-Adjusted Momentum | 252d return > RF | Shorter lookback captures crypto dynamics |
+| **Gold** | Real Yield < 0 OR VIX > 20 | 252d return > RF | Macro regime drives gold, not momentum |
+| **Silver** | Gold-Silver Ratio > mean + 0.5σ | 252d return > RF | Mean reversion in GSR outperforms |
+
+### Implementation Files
+
+- `strategy/hard_asset_signals.py` - Signal generators
+- `strategy/hard_asset_optimizer.py` - Optuna tuning + HRP
+- `strategy/hard_asset_backtest.py` - Comparative analysis
+
+### Execution Venues
+
+| Asset | Venue | Cost | Implication |
+|-------|-------|------|-------------|
+| **BTC** | Bybit (Spot) | <0.1% | Higher turnover acceptable |
+| **Gold** | GLD via Stake | $3 flat | Standard monthly rebalance |
+| **Silver** | SLV via Stake | $3 flat | Standard monthly rebalance |
+
+### Portfolio Construction
+
+Hard assets are integrated into the main portfolio via:
+
+1. **Signal Filtering**: Only hold assets with active buy signal
+2. **HRP Weighting**: Riskfolio-Lib HRP allocates among signaled assets
+3. **Rebalance**: Monthly check of signals with trades if weight drift > 5%
+
+```
+Portfolio Flow:
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ Hard Asset   │ -> │ HRP Weight   │ -> │ Final        │
+│ Signals      │    │ Calculation  │    │ Allocation   │
+└──────────────┘    └──────────────┘    └──────────────┘
+     BTC: 1              BTC: 35%           BTC: 35%
+     GOLD: 1             GOLD: 40%          GOLD: 40%
+     SILVER: 0           SILVER: 25%        SILVER: 0%
+                                            (filtered)
+```

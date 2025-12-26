@@ -369,14 +369,20 @@
 
 <body>
     <header>
-        <div class="logo">Quant<span>Dash</span></div>
+        <div class="logo">Quant<span>1.0</span></div>
         <div class="header-actions">
+            <a href="strategy_dashboard.html"
+                style="background: linear-gradient(135deg, #00d4ff 0%, #7b68ee 100%); color: white; padding: 6px 14px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px;">📊
+                Quant 1.0</a>
+            <a href="quant2_dashboard.html"
+                style="background: rgba(160, 160, 192, 0.2); color: var(--text-secondary); padding: 6px 14px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px;">📊
+                Quant 2.0</a>
             <a href="olmar_dashboard.html"
-                style="color: var(--text-secondary); text-decoration: none; margin-right: 16px;">📈 OLMAR</a>
-            <a href="quallamaggie_scanner.html"
-                style="color: var(--text-secondary); text-decoration: none; margin-right: 16px;">🎯 Scanner</a>
-            <a href="strategy_guide.html"
-                style="color: var(--text-secondary); text-decoration: none; margin-right: 16px;">📚 Strategy Guide</a>
+                style="color: var(--text-secondary); text-decoration: none; margin-left: 8px;">📈 OLMAR</a>
+            <a href="quallamaggie_scanner.html" style="color: var(--text-secondary); text-decoration: none;">🎯
+                Scanner</a>
+            <a href="update_schedule.html" style="color: var(--text-secondary); text-decoration: none;">📅 Schedule</a>
+            <a href="strategy_guide.html" style="color: var(--text-secondary); text-decoration: none;">📚 Guide</a>
             <span class="last-update" id="lastUpdate">Last updated: --</span>
             <button class="btn btn-primary" onclick="runScan()">🔄 Run Scan</button>
         </div>
@@ -628,53 +634,106 @@
             return 'Strategy';
         }
 
-        function showNoData() {
-            document.getElementById('comparisonBody').innerHTML =
-                '<tr><td colspan="8">No scan results. Click "Run Scan" to start.</td></tr>';
-        }
 
-        function showError(message) {
-            document.getElementById('comparisonBody').innerHTML =
-                `<tr><td colspan="8" style="color: var(--danger);">${message}</td></tr>`;
-        }
-
-        // Run scan
-        async function runScan() {
-            const btn = document.querySelector('.btn-primary');
-            btn.textContent = '⏳ Scanning...';
-            btn.disabled = true;
-
+        // Load data from JSON
+        async function loadDashboardData() {
             try {
-                const response = await fetch(`${API_BASE}/scan`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-API-Key': API_KEY
-                    },
-                    body: JSON.stringify({ strategies: null })
-                });
+                const response = await fetch('data/quant1_dashboard.json');
+                if (!response.ok) throw new Error('Data file not found');
 
-                const result = await response.json();
+                const data = await response.json();
 
-                if (result.status === 'success') {
-                    await fetchDashboard();
-                } else {
-                    showError(result.detail || 'Scan failed');
+                // 1. Update Timestamp
+                if (data.generated_at) {
+                    const ts = new Date(data.generated_at).toLocaleString();
+                    document.getElementById('last-updated').textContent = `Last Updated: ${ts}`;
                 }
+
+                // 2. Momentum Metrics
+                if (data.momentum) {
+                    // Check existing elements or create new ones? 
+                    // The HTML structure might expect specific IDs.
+                    // Based on previous view, we had 'bestStrategy', 'highestCagr' etc.
+                    // We will map available data to these placeholders best we can.
+
+                    document.getElementById('bestStrategy').textContent = data.momentum.best_performer || '--';
+                    document.getElementById('highestCagr').textContent = (data.momentum.best_return * 100).toFixed(2) + '%';
+
+                    // Use Avg 12m return as a proxy for "Highest CAGR" slot or just update label if possible
+                    // But let's stick to updating values.
+                }
+
+                // 3. Render Strategy Cards (Momentum vs Dual Momentum)
+                const container = document.getElementById('strategyCards');
+                if (container) {
+                    const strats = [];
+                    if (data.momentum) {
+                        strats.push({
+                            name: 'Momentum',
+                            metrics: {
+                                'Avg Return': (data.momentum.avg_12m_return * 100).toFixed(2) + '%',
+                                'Best Asset': data.momentum.best_performer
+                            }
+                        });
+                    }
+
+                    if (data.dual_momentum) {
+                        strats.push({
+                            name: 'Dual Momentum',
+                            metrics: {
+                                'Risk Status': data.dual_momentum.risk_on ? 'RISK ON' : 'RISK OFF'
+                            }
+                        });
+                    }
+
+                    container.innerHTML = strats.map(s => `
+            <div class="strategy-card">
+                <div class="strategy-header">
+                    <span class="strategy-card-name">${s.name}</span>
+                    <span class="strategy-badge badge-momentum">Active</span>
+                </div>
+                <div class="strategy-metrics">
+                    ${Object.entries(s.metrics).map(([k, v]) => `
+                                    <div class="metric-item">
+                                        <span class="metric-label">${k}</span>
+                                        <span class="metric-value">${v}</span>
+                                    </div>
+                                `).join('')}
+                </div>
+            </div>
+            `).join('');
+                }
+
+                // 4. Update Tables (Comparison Table -> repurposed for Top Picks)
+                const tableBody = document.getElementById('comparisonBody');
+                if (tableBody && data.momentum && data.momentum.top_20) {
+                    // Clear header
+                    const thead = document.querySelector('#comparisonTable thead tr');
+                    if (thead) {
+                        thead.innerHTML = '<th>Rank</th><th>Ticker</th><th>Score</th><th>Action</th>';
+                    }
+
+                    tableBody.innerHTML = data.momentum.top_20.slice(0, 10).map(row => `
+            <tr>
+                <td>${row.rank}</td>
+                <td class="font-semibold text-blue-400">${row.ticker}</td>
+                <td class="${row.score > 0 ? 'text-green-400' : 'text-red-400'}">${(row.score * 100).toFixed(2)}%</td>
+                <td>
+                    <a href="https://finance.yahoo.com/quote/${row.ticker}" target="_blank" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded">Chart</a>
+                </td>
+            </tr>
+                     `).join('');
+                }
+
             } catch (error) {
-                console.error('Scan error:', error);
-                showError('Scan failed: ' + error.message);
-            } finally {
-                btn.textContent = '🔄 Run Scan';
-                btn.disabled = false;
+                console.error('Error loading dashboard data:', error);
             }
         }
 
         // Initialize
-        fetchDashboard();
-
-        // Auto-refresh every 5 minutes
-        setInterval(fetchDashboard, 5 * 60 * 1000);
+        document.addEventListener('DOMContentLoaded', loadDashboardData);
+        // Refresh every 5 min
+        setInterval(loadDashboardData, 300000);
     </script>
 </body>
 
