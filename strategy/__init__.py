@@ -23,13 +23,13 @@ from .data_loader import DataLoader
 
 # Optional imports - require pandas_ta which needs Python >= 3.12
 try:
-    from .signals import MomentumSignals, TechnicalSignals, CompositeSignal
+    from strategy.quant1.momentum.signals import MomentumSignals, TechnicalSignals, CompositeSignal
 except ImportError:
     MomentumSignals = None
     TechnicalSignals = None
     CompositeSignal = None
 
-from .optimizer import PortfolioOptimizer, CostAwareOptimizer
+from strategy.quant1.optimization.optimizer import PortfolioOptimizer, CostAwareOptimizer
 from .backtest import PortfolioBacktester, VectorBTBacktester
 from .main import QuantStrategy
 
