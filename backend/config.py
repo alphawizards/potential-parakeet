@@ -7,9 +7,9 @@ Supports all data sources and rate limiting.
 
 import os
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 
 class Settings(BaseSettings):
@@ -27,13 +27,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./data/trades.db"
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000", 
-        "http://localhost:5173", 
-        "http://127.0.0.1:3000",
-        "http://localhost:8000"
-    ]
+    # CORS - stored as comma-separated string
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:8000"
     
     # Tiingo API (US Stocks, ETFs, Gold)
     TIINGO_API_KEY: str = ""
@@ -65,7 +60,7 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         """Get CORS origins as list."""
         if isinstance(self.CORS_ORIGINS, str):
-            return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+            return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
         return self.CORS_ORIGINS
 
 
