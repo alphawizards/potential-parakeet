@@ -4,7 +4,7 @@ OLMAR Dashboard Data Generator
 Generates JSON data for the OLMAR dashboard page.
 
 Run this script to update the dashboard data:
-    python -m strategy.olps.generate_dashboard_data
+    python -m strategy.quant1.olmar.generate_dashboard_data
 """
 
 import os
@@ -28,17 +28,17 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from strategy.data_loader import DataLoader, get_nasdaq_100_tickers
 from strategy.config import CONFIG, get_us_tickers, get_asx_tickers
-from strategy.olps.olmar_strategy import (
+from strategy.quant1.olmar.olmar_strategy import (
     OLMARStrategy,
     OLMARConfig,
     create_olmar_weekly,
     create_olmar_monthly
 )
-from strategy.olps.constraints import get_turnover_stats
+from strategy.quant1.olmar.constraints import get_turnover_stats
 
 
 def load_data(months: int = 12) -> Tuple[pd.DataFrame, pd.DataFrame]:
