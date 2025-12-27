@@ -1,0 +1,294 @@
+{
+  "generated_at": "2025-12-27T21:42:18.711379",
+  "scanner_type": "quallamaggie",
+  "universe": "nasdaq100",
+  "tickers_scanned": 100,
+  "results_found": 20,
+  "stocks": [
+    {
+      "ticker": "ORLY",
+      "name": "ORLY",
+      "price": 373.76,
+      "change_pct": -4.43,
+      "volume": 521774,
+      "signal": "BUY",
+      "score": 93.9,
+      "details": {
+        "adr_pct": 6.8,
+        "rs_rank": 44,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "AVGO",
+      "name": "AVGO",
+      "price": 259.42,
+      "change_pct": -1.53,
+      "volume": 189568,
+      "signal": "BUY",
+      "score": 89.5,
+      "details": {
+        "adr_pct": 7.0,
+        "rs_rank": 44,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "ASML",
+      "name": "ASML",
+      "price": 163.35,
+      "change_pct": 8.39,
+      "volume": 419427,
+      "signal": "BUY",
+      "score": 89.0,
+      "details": {
+        "adr_pct": 3.6,
+        "rs_rank": 99,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "ADP",
+      "name": "ADP",
+      "price": 125.61,
+      "change_pct": 0.78,
+      "volume": 617636,
+      "signal": "BUY",
+      "score": 86.9,
+      "details": {
+        "adr_pct": 6.1,
+        "rs_rank": 12,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "ILMN",
+      "name": "ILMN",
+      "price": 425.44,
+      "change_pct": -3.87,
+      "volume": 803937,
+      "signal": "BUY",
+      "score": 86.2,
+      "details": {
+        "adr_pct": 3.1,
+        "rs_rank": 100,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "NXPI",
+      "name": "NXPI",
+      "price": 497.85,
+      "change_pct": -2.73,
+      "volume": 404828,
+      "signal": "BUY",
+      "score": 83.5,
+      "details": {
+        "adr_pct": 4.0,
+        "rs_rank": 52,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "AMAT",
+      "name": "AMAT",
+      "price": 112.48,
+      "change_pct": 8.67,
+      "volume": 658111,
+      "signal": "BUY",
+      "score": 81.5,
+      "details": {
+        "adr_pct": 7.6,
+        "rs_rank": 39,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "TEAM",
+      "name": "TEAM",
+      "price": 353.21,
+      "change_pct": 1.51,
+      "volume": 654772,
+      "signal": "WATCH",
+      "score": 65.0,
+      "details": {
+        "adr_pct": 2.1,
+        "rs_rank": 87,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "AMD",
+      "name": "AMD",
+      "price": 76.88,
+      "change_pct": 0.86,
+      "volume": 897040,
+      "signal": "WATCH",
+      "score": 64.7,
+      "details": {
+        "adr_pct": 7.7,
+        "rs_rank": 65,
+        "pattern": "High Tight Flag"
+      }
+    },
+    {
+      "ticker": "BKR",
+      "name": "BKR",
+      "price": 104.76,
+      "change_pct": 2.8,
+      "volume": 155175,
+      "signal": "WATCH",
+      "score": 57.7,
+      "details": {
+        "adr_pct": 6.3,
+        "rs_rank": 73,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "WDAY",
+      "name": "WDAY",
+      "price": 359.15,
+      "change_pct": 7.34,
+      "volume": 725546,
+      "signal": "WATCH",
+      "score": 57.3,
+      "details": {
+        "adr_pct": 2.1,
+        "rs_rank": 52,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "MU",
+      "name": "MU",
+      "price": 205.92,
+      "change_pct": 9.53,
+      "volume": 451224,
+      "signal": "WATCH",
+      "score": 55.4,
+      "details": {
+        "adr_pct": 3.6,
+        "rs_rank": 39,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "SNPS",
+      "name": "SNPS",
+      "price": 314.59,
+      "change_pct": 7.2,
+      "volume": 468920,
+      "signal": "WATCH",
+      "score": 52.5,
+      "details": {
+        "adr_pct": 3.8,
+        "rs_rank": 41,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "PYPL",
+      "name": "PYPL",
+      "price": 273.66,
+      "change_pct": 4.88,
+      "volume": 141399,
+      "signal": "HOLD",
+      "score": 39.9,
+      "details": {
+        "adr_pct": 7.9,
+        "rs_rank": 45,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "ADI",
+      "name": "ADI",
+      "price": 227.72,
+      "change_pct": 9.16,
+      "volume": 783352,
+      "signal": "HOLD",
+      "score": 31.8,
+      "details": {
+        "adr_pct": 2.9,
+        "rs_rank": 44,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "ADBE",
+      "name": "ADBE",
+      "price": 206.59,
+      "change_pct": 9.31,
+      "volume": 166644,
+      "signal": "HOLD",
+      "score": 29.2,
+      "details": {
+        "adr_pct": 7.4,
+        "rs_rank": 29,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "AEP",
+      "name": "AEP",
+      "price": 312.92,
+      "change_pct": 9.8,
+      "volume": 762867,
+      "signal": "HOLD",
+      "score": 14.6,
+      "details": {
+        "adr_pct": 3.9,
+        "rs_rank": 59,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "CSX",
+      "name": "CSX",
+      "price": 370.09,
+      "change_pct": 2.72,
+      "volume": 164348,
+      "signal": "HOLD",
+      "score": 12.6,
+      "details": {
+        "adr_pct": 7.5,
+        "rs_rank": 81,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "GFS",
+      "name": "GFS",
+      "price": 148.48,
+      "change_pct": -0.3,
+      "volume": 518578,
+      "signal": "HOLD",
+      "score": 9.8,
+      "details": {
+        "adr_pct": 7.1,
+        "rs_rank": 16,
+        "pattern": "Consolidation"
+      }
+    },
+    {
+      "ticker": "PAYX",
+      "name": "PAYX",
+      "price": 384.73,
+      "change_pct": 0.91,
+      "volume": 457397,
+      "signal": "HOLD",
+      "score": 7.8,
+      "details": {
+        "adr_pct": 4.2,
+        "rs_rank": 49,
+        "pattern": "Consolidation"
+      }
+    }
+  ],
+  "filters": {
+    "min_price": 5.0,
+    "max_price": 500.0,
+    "min_volume": 100000
+  }
+}
