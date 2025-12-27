@@ -23,7 +23,7 @@ import warnings
 # Riskfolio-Lib imports
 import riskfolio as rp
 
-from .config import CONFIG, is_us_ticker, get_fx_cost
+from strategy.config import CONFIG, is_us_ticker, get_fx_cost
 
 warnings.filterwarnings('ignore')
 
