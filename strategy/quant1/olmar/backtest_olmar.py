@@ -4,7 +4,7 @@ OLMAR Backtest Script
 Backtest OLMAR strategy with weekly and monthly rebalancing scenarios.
 
 Usage:
-    python -m strategy.olps.backtest_olmar
+    python -m strategy.quant1.olmar.backtest_olmar
 
 Output:
     - Console comparison of weekly vs monthly rebalancing
@@ -21,18 +21,18 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from strategy.data_loader import DataLoader, get_nasdaq_100_tickers
 from strategy.config import CONFIG, get_us_tickers, get_asx_tickers
 from strategy.backtest import PortfolioBacktester, BacktestResult
-from strategy.olps.olmar_strategy import (
+from strategy.quant1.olmar.olmar_strategy import (
     OLMARStrategy,
     OLMARConfig,
     create_olmar_weekly,
     create_olmar_monthly
 )
-from strategy.olps.constraints import calculate_cost_drag, get_turnover_stats
+from strategy.quant1.olmar.constraints import calculate_cost_drag, get_turnover_stats
 
 
 def load_extended_universe(
