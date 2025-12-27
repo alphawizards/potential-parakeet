@@ -11,9 +11,9 @@ Optimizes 2 parameters:
 - epsilon: Sensitivity parameter (1.0-50.0)
 
 Usage:
-    python -m strategy.olps.backtest_olmar_optimized
-    python -m strategy.olps.backtest_olmar_optimized --n-trials 50
-    python -m strategy.olps.backtest_olmar_optimized --n-trials 100 --n-jobs 4
+    python -m strategy.quant1.olmar.backtest_olmar_optimized
+    python -m strategy.quant1.olmar.backtest_olmar_optimized --n-trials 50
+    python -m strategy.quant1.olmar.backtest_olmar_optimized --n-trials 100 --n-jobs 4
 """
 
 import argparse
@@ -29,11 +29,11 @@ import optuna
 import pandas as pd
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from strategy.config import CONFIG
 from strategy.data_loader import DataLoader, get_nasdaq_100_tickers
-from strategy.olps.kernels import olmar_weights
+from strategy.quant1.olmar.kernels import olmar_weights
 from backend.quant.validation import calculate_dsr, validate_backtest_result
 
 
@@ -41,7 +41,7 @@ from backend.quant.validation import calculate_dsr, validate_backtest_result
 # DATA LOADING WITH PARQUET CACHING
 # =============================================================================
 
-DATA_CACHE_PATH = Path(__file__).parent.parent.parent / "data" / "price_cache.parquet"
+DATA_CACHE_PATH = Path(__file__).parent.parent.parent.parent / "data" / "price_cache.parquet"
 
 
 def load_data_cached(
