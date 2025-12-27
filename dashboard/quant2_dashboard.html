@@ -746,12 +746,31 @@
             document.getElementById('chopProb').textContent = Math.round(probs.chop * 100) + '%';
         }
 
-        // Load data from JSON
+        // API Base URL
+        const API_BASE = '/api';
+        
+        // Load data from API (with fallback to JSON)
         async function loadDashboardData() {
             try {
-                const response = await fetch('data/quant2_dashboard.json');
-                if (response.ok) {
-                    const data = await response.json();
+                // Try API first
+                let data;
+                try {
+                    const response = await fetch(`${API_BASE}/dashboard/quant2/`);
+                    if (response.ok) {
+                        data = await response.json();
+                        console.log('Loaded from API:', data);
+                    } else {
+                        throw new Error('API not available');
+                    }
+                } catch (apiError) {
+                    console.log('API unavailable, falling back to JSON file');
+                    const response = await fetch('data/quant2_dashboard.json');
+                    if (response.ok) {
+                        data = await response.json();
+                    } else {
+                        throw new Error('No data available');
+                    }
+                }
 
                     if (data.generated_at) {
                         const ts = new Date(data.generated_at).toLocaleString();
