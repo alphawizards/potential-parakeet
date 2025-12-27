@@ -1,34 +1,73 @@
 """
 Quantitative Trading Dashboard API
 ===================================
-FastAPI application entry point.
+Unified FastAPI application entry point.
 
 Features:
 - RESTful API for trade tracking
 - Portfolio metrics calculation
 - Dashboard data aggregation
+- Strategy backtesting
+- Stock scanning
+- Data management (Tiingo + yFinance)
+
+API Routes:
+- /api/trades/* - Trade management
+- /api/data/* - Data refresh & status
+- /api/strategies/* - Strategy backtesting
+- /api/dashboard/* - Dashboard data
+- /api/scanner/* - Stock scanning
 """
 
-from fastapi import FastAPI
+import sys
+from pathlib import Path
+
+# Add parent path for strategy imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
+from datetime import datetime
 
 from .config import settings
 from .database.connection import init_db
-from .routers import trades_router
+from .routers import (
+    trades_router,
+    data_router,
+    strategies_router,
+    dashboard_router,
+    scanner_router
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    print("🚀 Starting Quant Trading Dashboard API...")
+    print("\n" + "="*60)
+    print("🚀 Starting Quant Trading Dashboard API v2.0")
+    print("="*60)
+    
     init_db()
     print("✅ Database initialized")
+    
+    # Check Tiingo API key
+    if settings.TIINGO_API_KEY:
+        print(f"✅ Tiingo API configured (Premium: {settings.TIINGO_IS_PREMIUM})")
+    else:
+        print("⚠️  Tiingo API key not configured - US data will use yFinance fallback")
+    
+    print(f"✅ CORS origins: {settings.cors_origins_list}")
+    print(f"✅ Server ready at http://{settings.HOST}:{settings.PORT}")
+    print("="*60 + "\n")
+    
     yield
+    
     # Shutdown
-    print("👋 Shutting down API...")
+    print("\n👋 Shutting down API...")
 
 
 # Create FastAPI application
@@ -36,20 +75,26 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="""
-    ## Quantitative Trading Dashboard API
+    ## Quantitative Trading Dashboard API v2.0
     
-    A comprehensive API for tracking trades and portfolio performance.
+    A comprehensive API for algorithmic trading strategy management.
     
     ### Features
     - **Trade Management**: Create, read, update, delete trades
     - **Portfolio Metrics**: Real-time P&L, win rate, Sharpe ratio
-    - **Dashboard Data**: Aggregated summaries for visualization
+    - **Strategy Backtesting**: Run and compare trading strategies
+    - **Stock Scanning**: Find trading opportunities
+    - **Data Management**: Refresh market data from Tiingo/yFinance
     
-    ### Trade Workflow
-    1. Create trade with entry details
-    2. Monitor open positions
-    3. Close trade with exit price
-    4. View performance metrics
+    ### Data Sources
+    - **Tiingo** (Premium): US Stocks, ETFs, Mutual Funds, Gold
+    - **yFinance**: ASX Stocks, ASX ETFs, VIX, BTC
+    
+    ### Strategy Categories
+    - **Quant 1.0**: Momentum, HRP, Dual Momentum, Inverse Volatility
+    - **Quant 2.0**: Regime Detection, Stat Arb, Residual Momentum, Meta-Labeling
+    - **Mean Reversion**: OLMAR
+    - **Breakout**: Quallamaggie
     """,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -59,7 +104,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,6 +112,24 @@ app.add_middleware(
 
 # Include routers
 app.include_router(trades_router)
+app.include_router(data_router)
+app.include_router(strategies_router)
+app.include_router(dashboard_router)
+app.include_router(scanner_router)
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle uncaught exceptions."""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc),
+            "path": str(request.url)
+        }
+    )
 
 
 # Health check endpoint
@@ -76,7 +139,8 @@ def health_check():
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
-        "version": settings.APP_VERSION
+        "version": settings.APP_VERSION,
+        "timestamp": datetime.now().isoformat()
     }
 
 
@@ -84,10 +148,36 @@ def health_check():
 def root():
     """Root endpoint with API information."""
     return {
-        "message": "Quant Trading Dashboard API",
+        "message": "Quant Trading Dashboard API v2.0",
         "version": settings.APP_VERSION,
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "endpoints": {
+            "trades": "/api/trades",
+            "data": "/api/data",
+            "strategies": "/api/strategies",
+            "dashboard": "/api/dashboard",
+            "scanner": "/api/scanner"
+        },
+        "data_sources": {
+            "tiingo": "US Stocks, ETFs, Mutual Funds, Gold (Premium)",
+            "yfinance": "ASX Stocks, ASX ETFs, VIX, BTC"
+        }
+    }
+
+
+@app.get("/api", tags=["root"])
+def api_root():
+    """API root with available endpoints."""
+    return {
+        "api_version": "2.0.0",
+        "endpoints": [
+            {"path": "/api/trades", "description": "Trade management"},
+            {"path": "/api/data", "description": "Data refresh & status"},
+            {"path": "/api/strategies", "description": "Strategy backtesting"},
+            {"path": "/api/dashboard", "description": "Dashboard data"},
+            {"path": "/api/scanner", "description": "Stock scanning"}
+        ]
     }
 
 
