@@ -389,25 +389,70 @@
   </main>
 
   <script>
-    // Mock health monitor integration
-    document.addEventListener('DOMContentLoaded', () => {
+    // API Integration
+    const API_BASE = '/api';
+    
+    async function loadDashboardData() {
+      try {
+        // Load data status
+        const statusResponse = await fetch(`${API_BASE}/data/status`);
+        if (statusResponse.ok) {
+          const status = await statusResponse.json();
+          console.log('Data status:', status);
+          
+          // Update health
+          const healthScore = status.cache_files > 0 ? 85 : 40;
+          const healthStatus = status.cache_files > 0 ? 'healthy' : 'degraded';
+          
+          document.getElementById('healthBadge').textContent = healthStatus === 'healthy' ? 'Healthy' : 'Degraded';
+          document.getElementById('healthBadge').className = `status-badge ${healthStatus === 'healthy' ? 'success' : 'warning'}`;
+          
+          document.getElementById('healthCircle').textContent = healthScore;
+          document.getElementById('healthCircle').className = `score-circle ${healthStatus}`;
+          
+          document.getElementById('stocksStatus').textContent = `${status.us_tickers_cached + status.asx_tickers_cached} tickers`;
+          
+          const cacheAge = status.last_refresh ? 
+            Math.round((Date.now() - new Date(status.last_refresh).getTime()) / (1000 * 60 * 60)) + ' hours old' : 
+            'No cache';
+          document.getElementById('dataAge').textContent = cacheAge;
+          document.getElementById('cacheHealthFooter').textContent = `${healthScore}/100 - ${healthStatus}`;
+        }
+        
+        // Load scanner results
+        const scannerResponse = await fetch(`${API_BASE}/scanner/status`);
+        if (scannerResponse.ok) {
+          const scanner = await scannerResponse.json();
+          if (scanner.results_count > 0) {
+            document.getElementById('scanCandidates').textContent = scanner.results_count;
+          }
+        }
+        
+        // Load dashboard overview
+        const dashboardResponse = await fetch(`${API_BASE}/dashboard/`);
+        if (dashboardResponse.ok) {
+          const dashboard = await dashboardResponse.json();
+          console.log('Dashboard overview:', dashboard);
+          
+          document.getElementById('strategiesTested').textContent = dashboard.summary?.total_strategies || 0;
+          document.getElementById('strategiesSuccess').textContent = dashboard.summary?.strategies_with_results || 0;
+          
+          if (dashboard.summary?.best_performer) {
+            document.getElementById('currentRegime').textContent = 'Active';
+          }
+        }
+        
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      }
+      
       document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
-
-      // Simulate health data
-      const healthScore = 60;
-      const healthStatus = 'degraded';
-
-      document.getElementById('healthBadge').textContent = 'Degraded';
-      document.getElementById('healthBadge').className = 'status-badge warning';
-
-      document.getElementById('healthCircle').textContent = healthScore;
-      document.getElementById('healthCircle').className = `score-circle ${healthStatus}`;
-
-      document.getElementById('stocksStatus').textContent = '560 tickers';
-      document.getElementById('dataAge').textContent = '2 days old';
-
-      document.getElementById('cacheHealthFooter').textContent = `${healthScore}/100 - ${healthStatus}`;
-    });
+    }
+    
+    document.addEventListener('DOMContentLoaded', loadDashboardData);
+    
+    // Refresh every 5 minutes
+    setInterval(loadDashboardData, 300000);
   </script>
 </body>
 
