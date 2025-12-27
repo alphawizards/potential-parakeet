@@ -5,8 +5,8 @@ Optimize and compare OLMAR strategy using Simple Moving Average (SMA)
 vs Exponential Moving Average (EMA).
 
 Usage:
-    python -m strategy.olps.compare_sma_ema
-    python -m strategy.olps.compare_sma_ema --n-trials 50
+    python -m strategy.quant1.olmar.compare_sma_ema
+    python -m strategy.quant1.olmar.compare_sma_ema --n-trials 50
 """
 
 import argparse
@@ -21,11 +21,11 @@ import optuna
 import pandas as pd
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from strategy.config import CONFIG
-from strategy.olps.kernels import olmar_weights, olmar_weights_ema
-from strategy.olps.backtest_olmar_optimized import load_data_cached
+from strategy.quant1.olmar.kernels import olmar_weights, olmar_weights_ema
+from strategy.quant1.olmar.backtest_olmar_optimized import load_data_cached
 from backend.quant.validation import calculate_dsr
 
 
