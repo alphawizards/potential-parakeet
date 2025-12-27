@@ -20,11 +20,15 @@ API Routes:
 """
 
 import sys
+import importlib
 from pathlib import Path
 
-# Add parent path for strategy imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent))
+# Add paths for imports
+_backend_dir = Path(__file__).parent
+_app_dir = _backend_dir.parent
+
+sys.path.insert(0, str(_app_dir))
+sys.path.insert(0, str(_backend_dir))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,24 +37,30 @@ from contextlib import asynccontextmanager
 import uvicorn
 from datetime import datetime
 
-# Use absolute imports for when running from backend directory
-try:
-    from config import settings
-    from database.connection import init_db
-    from routers.trades import router as trades_router
-    from routers.data import router as data_router
-    from routers.strategies import router as strategies_router
-    from routers.dashboard import router as dashboard_router
-    from routers.scanner import router as scanner_router
-except ImportError:
-    # Fall back to relative imports when running as a module
-    from .config import settings
-    from .database.connection import init_db
-    from .routers.trades import router as trades_router
-    from .routers.data import router as data_router
-    from .routers.strategies import router as strategies_router
-    from .routers.dashboard import router as dashboard_router
-    from .routers.scanner import router as scanner_router
+# Dynamic imports to handle both module and direct execution
+def _import_module(module_name):
+    """Import module with fallback for both execution modes."""
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        return importlib.import_module(f"backend.{module_name}")
+
+# Import all required modules
+config_module = _import_module("config")
+db_module = _import_module("database.connection")
+trades_module = _import_module("routers.trades")
+data_module = _import_module("routers.data")
+strategies_module = _import_module("routers.strategies")
+dashboard_module = _import_module("routers.dashboard")
+scanner_module = _import_module("routers.scanner")
+
+settings = config_module.settings
+init_db = db_module.init_db
+trades_router = trades_module.router
+data_router = data_module.router
+strategies_router = strategies_module.router
+dashboard_router = dashboard_module.router
+scanner_router = scanner_module.router
 
 
 @asynccontextmanager
