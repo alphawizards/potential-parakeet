@@ -24,6 +24,7 @@ from pathlib import Path
 
 # Add parent path for strategy imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,15 +33,24 @@ from contextlib import asynccontextmanager
 import uvicorn
 from datetime import datetime
 
-from .config import settings
-from .database.connection import init_db
-from .routers import (
-    trades_router,
-    data_router,
-    strategies_router,
-    dashboard_router,
-    scanner_router
-)
+# Use absolute imports for when running from backend directory
+try:
+    from config import settings
+    from database.connection import init_db
+    from routers.trades import router as trades_router
+    from routers.data import router as data_router
+    from routers.strategies import router as strategies_router
+    from routers.dashboard import router as dashboard_router
+    from routers.scanner import router as scanner_router
+except ImportError:
+    # Fall back to relative imports when running as a module
+    from .config import settings
+    from .database.connection import init_db
+    from .routers.trades import router as trades_router
+    from .routers.data import router as data_router
+    from .routers.strategies import router as strategies_router
+    from .routers.dashboard import router as dashboard_router
+    from .routers.scanner import router as scanner_router
 
 
 @asynccontextmanager
