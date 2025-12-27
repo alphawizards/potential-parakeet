@@ -4,12 +4,22 @@ Database Connection Management
 SQLAlchemy async session management with connection pooling.
 """
 
+import sys
+from pathlib import Path
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from typing import Generator
 
-from ..config import settings
+# Import settings dynamically
+try:
+    from config import settings
+except ImportError:
+    from backend.config import settings
 
 # Create engine with appropriate settings
 engine = create_engine(
