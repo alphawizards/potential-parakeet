@@ -39,7 +39,7 @@ class TestOLMARKernels:
     
     def test_price_relatives_shape(self, sample_prices):
         """Price relatives should have same shape as input."""
-        from strategy.olps.kernels import calculate_price_relatives
+        from strategy.quant1.olmar.kernels import calculate_price_relatives
         
         result = calculate_price_relatives(sample_prices)
         
@@ -48,7 +48,7 @@ class TestOLMARKernels:
     
     def test_price_relatives_first_row_nan(self, sample_prices):
         """First row should be NaN (no previous price)."""
-        from strategy.olps.kernels import calculate_price_relatives
+        from strategy.quant1.olmar.kernels import calculate_price_relatives
         
         result = calculate_price_relatives(sample_prices)
         
@@ -56,7 +56,7 @@ class TestOLMARKernels:
     
     def test_price_relatives_values(self, sample_prices):
         """Price relatives should be p_t / p_{t-1}."""
-        from strategy.olps.kernels import calculate_price_relatives
+        from strategy.quant1.olmar.kernels import calculate_price_relatives
         
         result = calculate_price_relatives(sample_prices)
         
@@ -71,7 +71,7 @@ class TestOLMARKernels:
     
     def test_price_relatives_no_nan_inf(self, sample_prices):
         """After first row, there should be no NaN or Inf."""
-        from strategy.olps.kernels import calculate_price_relatives
+        from strategy.quant1.olmar.kernels import calculate_price_relatives
         
         result = calculate_price_relatives(sample_prices)
         
@@ -83,7 +83,7 @@ class TestOLMARKernels:
     
     def test_ma_prediction_shape(self, sample_prices):
         """MA prediction should have same shape as input."""
-        from strategy.olps.kernels import predict_ma_reversion
+        from strategy.quant1.olmar.kernels import predict_ma_reversion
         
         result = predict_ma_reversion(sample_prices, window=5)
         
@@ -91,7 +91,7 @@ class TestOLMARKernels:
     
     def test_ma_prediction_values(self, sample_prices):
         """MA prediction should be MA / current price."""
-        from strategy.olps.kernels import predict_ma_reversion
+        from strategy.quant1.olmar.kernels import predict_ma_reversion
         
         window = 5
         result = predict_ma_reversion(sample_prices, window=window)
@@ -109,7 +109,7 @@ class TestOLMARKernels:
     
     def test_simplex_projection_sums_to_one(self):
         """Projected weights should sum to 1."""
-        from strategy.olps.kernels import project_simplex
+        from strategy.quant1.olmar.kernels import project_simplex
         
         # Test cases
         test_vectors = [
@@ -125,7 +125,7 @@ class TestOLMARKernels:
     
     def test_simplex_projection_non_negative(self):
         """Projected weights should all be >= 0."""
-        from strategy.olps.kernels import project_simplex
+        from strategy.quant1.olmar.kernels import project_simplex
         
         # Test with negative values
         vec = np.array([-0.5, 0.8, 0.3, -0.2, 0.6])
@@ -135,7 +135,7 @@ class TestOLMARKernels:
     
     def test_olmar_update_on_simplex(self):
         """Updated weights should be on simplex."""
-        from strategy.olps.kernels import olmar_update
+        from strategy.quant1.olmar.kernels import olmar_update
         
         current = np.array([0.2, 0.3, 0.5])
         prediction = np.array([1.1, 0.9, 1.05])  # Different predictions
@@ -148,7 +148,7 @@ class TestOLMARKernels:
     
     def test_olmar_weights_shape(self, sample_prices):
         """OLMAR weights should have same shape as prices."""
-        from strategy.olps.kernels import olmar_weights
+        from strategy.quant1.olmar.kernels import olmar_weights
         
         result = olmar_weights(sample_prices, window=5, epsilon=10)
         
@@ -157,7 +157,7 @@ class TestOLMARKernels:
     
     def test_olmar_weights_sum_to_one(self, sample_prices):
         """All weight rows should sum to 1."""
-        from strategy.olps.kernels import olmar_weights
+        from strategy.quant1.olmar.kernels import olmar_weights
         
         result = olmar_weights(sample_prices, window=5, epsilon=10)
         
@@ -168,7 +168,7 @@ class TestOLMARKernels:
     
     def test_olmar_weights_non_negative(self, sample_prices):
         """All weights should be >= 0."""
-        from strategy.olps.kernels import olmar_weights
+        from strategy.quant1.olmar.kernels import olmar_weights
         
         result = olmar_weights(sample_prices, window=5, epsilon=10)
         
@@ -180,7 +180,7 @@ class TestOLMARConstraints:
     
     def test_turnover_calculation(self):
         """Turnover should be half the sum of absolute weight changes."""
-        from strategy.olps.constraints import calculate_turnover
+        from strategy.quant1.olmar.constraints import calculate_turnover
         
         old = np.array([0.2, 0.3, 0.5])
         new = np.array([0.4, 0.1, 0.5])
@@ -195,7 +195,7 @@ class TestOLMARConstraints:
     
     def test_turnover_cap_reduces_turnover(self):
         """Turnover cap should reduce turnover to max level."""
-        from strategy.olps.constraints import apply_turnover_cap, calculate_turnover
+        from strategy.quant1.olmar.constraints import apply_turnover_cap, calculate_turnover
         
         old = np.array([0.2, 0.3, 0.5])
         new = np.array([0.5, 0.0, 0.5])  # High turnover
@@ -209,7 +209,7 @@ class TestOLMARConstraints:
     
     def test_turnover_cap_preserves_simplex(self):
         """Capped weights should still be on simplex."""
-        from strategy.olps.constraints import apply_turnover_cap
+        from strategy.quant1.olmar.constraints import apply_turnover_cap
         
         old = np.array([0.2, 0.3, 0.5])
         new = np.array([0.5, 0.0, 0.5])
@@ -221,21 +221,21 @@ class TestOLMARConstraints:
     
     def test_zero_cost_warning(self):
         """Should warn when transaction costs are zero."""
-        from strategy.olps.constraints import warn_if_zero_costs
+        from strategy.quant1.olmar.constraints import warn_if_zero_costs
         
         with pytest.warns(UserWarning, match="Transaction costs set to 0"):
             warn_if_zero_costs(0)
     
     def test_low_cost_warning(self):
         """Should warn when transaction costs are very low."""
-        from strategy.olps.constraints import warn_if_zero_costs
+        from strategy.quant1.olmar.constraints import warn_if_zero_costs
         
         with pytest.warns(UserWarning, match="very low"):
             warn_if_zero_costs(2)
     
     def test_reasonable_cost_no_warning(self):
         """Should not warn with reasonable costs."""
-        from strategy.olps.constraints import warn_if_zero_costs
+        from strategy.quant1.olmar.constraints import warn_if_zero_costs
         
         # This should not raise a warning
         with warnings.catch_warnings():
@@ -270,7 +270,7 @@ class TestOLMARStrategy:
     
     def test_strategy_creation(self):
         """Strategy should be created with default config."""
-        from strategy.olps.olmar_strategy import OLMARStrategy, OLMARConfig
+        from strategy.quant1.olmar.olmar_strategy import OLMARStrategy, OLMARConfig
         
         strategy = OLMARStrategy()
         
@@ -280,7 +280,7 @@ class TestOLMARStrategy:
     
     def test_factory_weekly(self):
         """Factory should create weekly strategy."""
-        from strategy.olps.olmar_strategy import create_olmar_weekly
+        from strategy.quant1.olmar.olmar_strategy import create_olmar_weekly
         
         strategy = create_olmar_weekly()
         
@@ -288,7 +288,7 @@ class TestOLMARStrategy:
     
     def test_factory_monthly(self):
         """Factory should create monthly strategy."""
-        from strategy.olps.olmar_strategy import create_olmar_monthly
+        from strategy.quant1.olmar.olmar_strategy import create_olmar_monthly
         
         strategy = create_olmar_monthly()
         
@@ -296,7 +296,7 @@ class TestOLMARStrategy:
     
     def test_generate_weights_shape(self, sample_prices):
         """Generated weights should match price shape."""
-        from strategy.olps.olmar_strategy import OLMARStrategy
+        from strategy.quant1.olmar.olmar_strategy import OLMARStrategy
         
         strategy = OLMARStrategy()
         result = strategy.generate_weights(sample_prices)
@@ -305,7 +305,7 @@ class TestOLMARStrategy:
     
     def test_generate_weights_simplex(self, sample_prices):
         """Generated weights should be on simplex."""
-        from strategy.olps.olmar_strategy import OLMARStrategy
+        from strategy.quant1.olmar.olmar_strategy import OLMARStrategy
         
         strategy = OLMARStrategy()
         result = strategy.generate_weights(sample_prices)
@@ -320,7 +320,7 @@ class TestOLMARStrategy:
     
     def test_turnover_stats_present(self, sample_prices):
         """Result should include turnover statistics."""
-        from strategy.olps.olmar_strategy import OLMARStrategy
+        from strategy.quant1.olmar.olmar_strategy import OLMARStrategy
         
         strategy = OLMARStrategy()
         result = strategy.generate_weights(sample_prices)
@@ -330,7 +330,7 @@ class TestOLMARStrategy:
     
     def test_config_validation(self):
         """Invalid config should raise error."""
-        from strategy.olps.olmar_strategy import OLMARConfig
+        from strategy.quant1.olmar.olmar_strategy import OLMARConfig
         
         with pytest.raises(ValueError):
             OLMARConfig(window=-1)
