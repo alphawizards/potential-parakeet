@@ -165,16 +165,32 @@ class TiingoDataLoader:
             return {}
 
 
+def get_tiingo_loader():
+    """Get a Tiingo loader with API key from environment."""
+    import os
+    api_key = os.environ.get('TIINGO_API_KEY', '')
+    is_premium = os.environ.get('TIINGO_IS_PREMIUM', 'true').lower() == 'true'
+    
+    if not api_key:
+        raise ValueError("TIINGO_API_KEY environment variable not set")
+    
+    return TiingoDataLoader(api_token=api_key, is_premium=is_premium)
+
+
 if __name__ == "__main__":
     # Test the Tiingo loader
     print("="*70)
     print("TIINGO DATA LOADER TEST")
     print("="*70)
     
-    # Initialize loader (update with your API key)
+    # Initialize loader from environment
+    import os
+    api_key = os.environ.get('TIINGO_API_KEY', 'a49dba6e5f76ba7414cc23aba45fa93f435ad2d5')
+    is_premium = os.environ.get('TIINGO_IS_PREMIUM', 'true').lower() == 'true'
+    
     loader = TiingoDataLoader(
-        api_token="a49dba6e5f76ba7414cc23aba45fa93f435ad2d5",
-        is_premium=True  # User has premium plan
+        api_token=api_key,
+        is_premium=is_premium
     )
     
     # Test single ticker
