@@ -524,7 +524,7 @@ class UnifiedASXLoader:
         total = norgate_count + yf_count
         
         if total > 0:
-            self._log(f"\nData Sources:")
+            self._log("\nData Sources:")
             self._log(f"  Norgate: {norgate_count} tickers ({norgate_count/total*100:.1f}%)")
             self._log(f"  yFinance: {yf_count} tickers ({yf_count/total*100:.1f}%)")
         

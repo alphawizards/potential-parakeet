@@ -129,26 +129,26 @@ def fetch_asx_universe(
     prices_df.to_parquet(prices_file)
     volume_df.to_parquet(volume_file)
     
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("DATA SAVED")
     print("=" * 70)
     print(f"Prices: {prices_file} ({prices_file.stat().st_size / 1024 / 1024:.2f} MB)")
     print(f"Volume: {volume_file} ({volume_file.stat().st_size / 1024 / 1024:.2f} MB)")
     
     # Print source report
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("SOURCE REPORT")
     print("=" * 70)
     print(f"Total Tickers Fetched: {source_stats['total_tickers']}")
-    print(f"")
-    print(f"📊 NORGATE DATA:")
+    print("")
+    print("📊 NORGATE DATA:")
     print(f"   Count: {source_stats['norgate_count']} ({source_stats['norgate_pct']:.1f}%)")
     if source_stats['norgate_tickers']:
         preview = source_stats['norgate_tickers'][:10]
         print(f"   Sample: {', '.join(preview)}{'...' if len(source_stats['norgate_tickers']) > 10 else ''}")
     
-    print(f"")
-    print(f"📈 YFINANCE:")
+    print("")
+    print("📈 YFINANCE:")
     print(f"   Count: {source_stats['yfinance_count']} ({source_stats['yfinance_pct']:.1f}%)")
     if source_stats['yfinance_tickers']:
         preview = source_stats['yfinance_tickers'][:10]
@@ -157,7 +157,7 @@ def fetch_asx_universe(
     print("=" * 70)
     
     # Data quality summary
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("DATA QUALITY SUMMARY")
     print("=" * 70)
     
@@ -166,13 +166,13 @@ def fetch_asx_universe(
     high_missing = missing_pct[missing_pct > 10]
     
     if len(high_missing) > 0:
-        print(f"\n⚠️ Tickers with >10% missing data:")
+        print("\n⚠️ Tickers with >10% missing data:")
         for ticker, pct in high_missing.head(10).items():
             print(f"   {ticker}: {pct:.1f}% missing")
     else:
-        print(f"✓ All tickers have <10% missing data")
+        print("✓ All tickers have <10% missing data")
     
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("✅ FETCH COMPLETE")
     print("=" * 70)
     
