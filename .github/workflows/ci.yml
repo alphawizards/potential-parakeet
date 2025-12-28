@@ -54,7 +54,7 @@ jobs:
         run: pip install bandit safety
       
       - name: Run Bandit security scan
-        run: bandit -r strategy/ backend/ -ll --skip B101
+        run: bandit -r . -x ./tests -ll
       
       - name: Check dependencies for vulnerabilities
         run: safety check -r requirements.txt --output bare || true

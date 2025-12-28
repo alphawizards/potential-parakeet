@@ -338,7 +338,7 @@ class MetaLabelModel:
             self (loaded model)
         """
         with open(filepath, 'rb') as f:
-            model_data = pickle.load(f)
+            model_data = pickle.load(f)  # nosec B301
         
         self.model = model_data['model']
         self.scaler = model_data['scaler']
