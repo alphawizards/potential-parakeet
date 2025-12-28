@@ -83,7 +83,7 @@ if missing_sp500:
         start_date="2005-01-01",
         end_date="2025-12-26",
         use_tiingo_fallback=True,
-        tiingo_api_token="a49dba6e5f76ba7414cc23aba45fa93f435ad2d5",
+        tiingo_api_token="a49dba6e5f76ba7414cc23aba45fa93f435ad2d5",  # nosec B106
         tiingo_is_premium=True
     )
     

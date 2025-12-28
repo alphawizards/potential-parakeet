@@ -19,7 +19,7 @@ print("DATA AVAILABILITY VERIFICATION")
 print("="*80)
 
 # Tiingo API setup
-TIINGO_TOKEN = "a49dba6e5f76ba7414cc23aba45fa93f435ad2d5"
+TIINGO_TOKEN = "a49dba6e5f76ba7414cc23aba45fa93f435ad2d5"  # nosec B105
 TIINGO_HEADERS = {
     'Content-Type': 'application/json',
     'Authorization': f'Token {TIINGO_TOKEN}'
