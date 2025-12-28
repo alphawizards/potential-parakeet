@@ -6,14 +6,24 @@ Supports all data sources and rate limiting.
 """
 
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 from pathlib import Path
 from typing import List, Optional, Union
 
+# Compute env file path before class definition
+_ENV_FILE_PATH = Path(__file__).parent / ".env"
+
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
+    
+    # Use pydantic v2 model_config
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE_PATH),
+        case_sensitive=True,
+        extra="ignore"
+    )
     
     # Application
     APP_NAME: str = "Quant Trading Dashboard API"
@@ -50,11 +60,6 @@ class Settings(BaseSettings):
     # API Key for protected endpoints (optional)
     API_KEY: str = ""
     API_KEY_HASH: str = ""
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"
     
     @property
     def cors_origins_list(self) -> List[str]:
