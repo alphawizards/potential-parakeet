@@ -14,6 +14,7 @@ sqlalchemy>=2.0.0
 # ============== QUANT STRATEGY ==============
 # Data Ingestion
 yfinance>=0.2.36
+norgatedata>=1.0.0  # Premium ASX data (optional - falls back to yfinance)
 pandas>=2.0.0
 numpy>=1.24.0
 
