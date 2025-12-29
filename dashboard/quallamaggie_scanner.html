@@ -681,7 +681,7 @@
         let scanResults = [];
 
         // Update universe info with data source
-        function updateUniverseInfo() {
+        function updateUniverseInfo(autoScan = false) {
             const select = document.getElementById('universeSelect');
             const universe = select.value;
             const count = UNIVERSES[universe].length;
@@ -689,11 +689,22 @@
             const sourceLabel = dataSource === 'tiingo' ? '🇺🇸 Tiingo' : '🇦🇺 Norgate';
             document.getElementById('universeInfo').textContent =
                 `${count} stocks in universe | Data: ${sourceLabel}`;
+
+            // Auto-scan when universe changes (but not on initial load)
+            if (autoScan) {
+                runScan();
+            }
         }
 
-        document.getElementById('universeSelect').addEventListener('change', updateUniverseInfo);
-        // Initialize with default
-        document.addEventListener('DOMContentLoaded', updateUniverseInfo);
+        // When dropdown changes, update info AND run scan automatically
+        document.getElementById('universeSelect').addEventListener('change', () => updateUniverseInfo(true));
+
+        // Initialize on page load - update info and run initial scan
+        document.addEventListener('DOMContentLoaded', () => {
+            updateUniverseInfo(false);
+            // Run initial scan after a short delay to ensure everything is loaded
+            setTimeout(() => runScan(), 500);
+        });
 
         async function runScan() {
             const btn = document.getElementById('scanBtn');
