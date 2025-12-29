@@ -61,6 +61,41 @@ def get_strategy_results() -> Dict[str, Any]:
     return results
 
 
+@router.get("/data-status")
+async def get_data_status() -> Dict[str, Any]:
+    """
+    Get data availability and freshness status for all universes.
+    
+    Returns:
+    - Universe coverage (date ranges, ticker counts)
+    - Data freshness (staleness, last update)
+    - Market status (last trading dates)
+    - Backtest readiness
+    """
+    try:
+        from strategy.infrastructure.data_freshness import DataFreshness, get_data_status as _get_status
+        return _get_status()
+    except ImportError as e:
+        # Fallback if modules not available
+        return {
+            "error": "Data freshness modules not available",
+            "message": str(e),
+            "generated_at": datetime.now().isoformat(),
+            "overall_status": "unknown",
+            "universes": [
+                {"name": "sp500", "status": "unknown"},
+                {"name": "nasdaq100", "status": "unknown"},
+                {"name": "asx200", "status": "unknown"}
+            ]
+        }
+    except Exception as e:
+        return {
+            "error": "Failed to get data status",
+            "message": str(e),
+            "generated_at": datetime.now().isoformat()
+        }
+
+
 @router.get("/")
 async def get_dashboard_overview() -> Dict[str, Any]:
     """
