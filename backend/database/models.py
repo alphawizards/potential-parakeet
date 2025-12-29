@@ -159,3 +159,33 @@ class PortfolioSnapshot(Base):
     
     def __repr__(self) -> str:
         return f"<PortfolioSnapshot(date={self.snapshot_date}, value={self.total_value})>"
+
+
+class IndexConstituent(Base):
+    """
+    Tracks historical index membership for Point-in-Time universe selection.
+    Solves Survivorship Bias by allowing us to know exactly which stocks were
+    in the index on any given past date.
+    """
+    __tablename__ = "index_constituents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Composite unique key: (ticker, index_name, start_date)
+    ticker = Column(String(20), nullable=False, index=True)
+    index_name = Column(String(20), nullable=False, index=True)  # e.g., 'SP500', 'ASX200'
+    
+    # Validity period
+    start_date = Column(DateTime, nullable=False, index=True)
+    end_date = Column(DateTime, nullable=True)  # Null = Currently in index
+    
+    # Metadata
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_constituents_lookup', 'index_name', 'start_date', 'end_date'),
+    )
+
+    def __repr__(self):
+        return f"<IndexConstituent({self.ticker}, {self.index_name}, {self.start_date} to {self.end_date})>"

@@ -21,6 +21,13 @@ import vectorbt as vbt
 
 from strategy.infrastructure.config import CONFIG, BACKTEST_CONFIG, is_us_ticker
 
+# Import UniverseProvider for Point-in-Time universe selection (survivorship bias-free)
+try:
+    from strategy.data.universe import UniverseProvider
+    UNIVERSE_PROVIDER_AVAILABLE = True
+except ImportError:
+    UNIVERSE_PROVIDER_AVAILABLE = False
+
 warnings.filterwarnings('ignore')
 
 
@@ -62,7 +69,9 @@ class PortfolioBacktester:
                      include_costs: bool = True,
                      execution_delay: int = 1,
                      slippage_bps: float = 0.5,
-                     market_impact_bps: float = 0.25) -> BacktestResult:
+                     market_impact_bps: float = 0.25,
+                     use_dynamic_universe: bool = False,
+                     index_name: str = 'SP500') -> BacktestResult:
         """
         Run backtest with dynamic weight allocation.
         
@@ -78,6 +87,9 @@ class PortfolioBacktester:
                             Set to 0 for legacy behavior (look-ahead bias)
             slippage_bps: Bid-ask half-spread in basis points (default: 0.5 = 0.005%)
             market_impact_bps: Price impact in basis points (default: 0.25 = 0.0025%)
+            use_dynamic_universe: If True, filter stocks to only those in the index
+                                  at each rebalance date (survivorship bias-free)
+            index_name: Index to use for dynamic universe (default: 'SP500')
             
         Returns:
             BacktestResult object
@@ -98,6 +110,11 @@ class PortfolioBacktester:
         
         # Track pending weight changes for execution delay
         pending_weights = {}  # date -> target_weights
+        
+        # Initialize Universe Provider for Point-in-Time selection
+        universe_provider = None
+        if use_dynamic_universe and UNIVERSE_PROVIDER_AVAILABLE:
+            universe_provider = UniverseProvider()
         
         dates = self.prices.index
         
@@ -134,9 +151,31 @@ class PortfolioBacktester:
             
             # Check if rebalance signal day
             if date in rebalance_dates:
-                # Get new target weights using data up to previous close
-                lookback_prices = self.prices.loc[:prev_date]
+                # --- Dynamic Universe Selection (Survivorship Bias-Free) ---
+                if universe_provider is not None:
+                    # Get tickers that were in the index on this date
+                    valid_tickers = universe_provider.get_assets_at_date(date, index_name=index_name)
+                    
+                    # Intersect with data we actually have prices for
+                    available_universe = [t for t in valid_tickers if t in self.prices.columns]
+                    
+                    if not available_universe:
+                        # Fallback if universe is empty (before data starts)
+                        available_universe = self.prices.columns.tolist()
+                else:
+                    # Legacy: Use all columns
+                    available_universe = self.prices.columns.tolist()
+                
+                # Get prices filtered to available universe
+                lookback_prices = self.prices.loc[:prev_date, available_universe]
                 target_weights = weights_func(lookback_prices, i)
+                
+                # Ensure weights use full index for portfolio tracking
+                full_weights = pd.Series(0.0, index=self.prices.columns)
+                for ticker in target_weights.index:
+                    if ticker in full_weights.index:
+                        full_weights[ticker] = target_weights[ticker]
+                target_weights = full_weights
                 
                 # Schedule execution for T+execution_delay
                 if execution_delay > 0 and i + execution_delay < len(dates):
