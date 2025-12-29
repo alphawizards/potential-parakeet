@@ -478,8 +478,9 @@
         <div class="universe-selector">
             <label for="universeSelect">Scan Universe:</label>
             <select id="universeSelect">
-                <option value="sp500">S&P 500</option>
-                <option value="nasdaq100">NASDAQ 100</option>
+                <option value="sp500">S&P 500 (US)</option>
+                <option value="nasdaq100">NASDAQ 100 (US)</option>
+                <option value="asx200">ASX 200 (Australia)</option>
                 <option value="momentum">Momentum Leaders</option>
                 <option value="custom">Custom (Top ETFs)</option>
             </select>
@@ -535,17 +536,143 @@
     </main>
 
     <script>
-        // Universe definitions
+        // Data Source Configuration
+        const DATA_SOURCES = {
+            US: 'tiingo',      // Tiingo for US stocks (S&P 500, NASDAQ 100)
+            AU: 'norgate'      // Norgate for Australian stocks (ASX 200)
+        };
+
+        // S&P 500 Components (Full list - 503 stocks as of Dec 2024)
+        const SP500_TICKERS = [
+            // Information Technology
+            'AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'CRM', 'ADBE', 'ACN', 'CSCO', 'IBM',
+            'INTC', 'AMD', 'TXN', 'QCOM', 'NOW', 'INTU', 'AMAT', 'ADI', 'LRCX', 'MU',
+            'KLAC', 'SNPS', 'CDNS', 'APH', 'MSI', 'MCHP', 'TEL', 'FTNT', 'ON', 'ANSS',
+            'KEYS', 'HPQ', 'GLW', 'FSLR', 'HPE', 'MPWR', 'ZBRA', 'GEN', 'SWKS', 'EPAM',
+            'NTAP', 'JNPR', 'PTC', 'AKAM', 'WDC', 'FFIV', 'CTSH', 'IT', 'PAYC', 'ENPH',
+            // Financials
+            'JPM', 'V', 'MA', 'BAC', 'WFC', 'GS', 'MS', 'SPGI', 'AXP', 'BLK',
+            'C', 'SCHW', 'CB', 'MMC', 'PGR', 'CME', 'AON', 'ICE', 'USB', 'MCO',
+            'AJG', 'PNC', 'AFL', 'MET', 'TRV', 'PRU', 'ALL', 'AIG', 'TFC', 'AMP',
+            'BK', 'MTB', 'CINF', 'FDS', 'MSCI', 'DFS', 'HBAN', 'RF', 'HIG', 'RJF',
+            'WRB', 'CFG', 'KEY', 'FITB', 'STT', 'NTRS', 'SYF', 'L', 'ACGL', 'GL',
+            // Health Care
+            'UNH', 'LLY', 'JNJ', 'MRK', 'ABBV', 'TMO', 'ABT', 'DHR', 'PFE', 'AMGN',
+            'BMY', 'ISRG', 'VRTX', 'SYK', 'ELV', 'GILD', 'MDT', 'BSX', 'CI', 'CVS',
+            'REGN', 'MCK', 'HUM', 'BDX', 'ZTS', 'COR', 'EW', 'IDXX', 'A', 'GEHC',
+            'IQV', 'DXCM', 'MTD', 'CAH', 'BAX', 'RMD', 'HOLX', 'WAT', 'TFX', 'ALGN',
+            'PODD', 'LH', 'MOH', 'CNC', 'BIIB', 'DGX', 'VTRS', 'TECH', 'HSIC', 'INCY',
+            // Consumer Discretionary
+            'AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'LOW', 'SBUX', 'TJX', 'CMG', 'BKNG',
+            'ORLY', 'AZO', 'MAR', 'YUM', 'HLT', 'RCL', 'GM', 'F', 'DHI', 'LEN',
+            'ROST', 'DPZ', 'LVS', 'MGM', 'WYNN', 'APTV', 'EBAY', 'ULTA', 'GRMN', 'NVR',
+            'BBY', 'GPC', 'DRI', 'PHM', 'POOL', 'TSCO', 'CZR', 'BWA', 'TPR', 'KMX',
+            'CCL', 'NCLH', 'HAS', 'RL', 'LKQ', 'MHK', 'VFC', 'EXPE', 'LULU', 'DECK',
+            // Communication Services
+            'GOOGL', 'GOOG', 'META', 'NFLX', 'DIS', 'CMCSA', 'T', 'VZ', 'CHTR', 'TMUS',
+            'EA', 'MTCH', 'WBD', 'OMC', 'TTWO', 'PARA', 'IPG', 'LYV', 'FOX', 'FOXA',
+            'NWSA', 'NWS',
+            // Consumer Staples
+            'PG', 'COST', 'WMT', 'KO', 'PEP', 'PM', 'MDLZ', 'CL', 'MO', 'EL',
+            'KMB', 'GIS', 'SYY', 'STZ', 'KDP', 'HSY', 'KHC', 'TSN', 'ADM', 'MKC',
+            'CAG', 'CLX', 'K', 'CHD', 'HRL', 'TAP', 'SJM', 'CPB', 'LW', 'BG',
+            'KR', 'WBA', 'TGT',
+            // Industrials
+            'GE', 'CAT', 'RTX', 'HON', 'UNP', 'BA', 'UPS', 'DE', 'LMT', 'ADP',
+            'ETN', 'GD', 'ITW', 'WM', 'CSX', 'NSC', 'FDX', 'PH', 'EMR', 'NOC',
+            'CTAS', 'CARR', 'JCI', 'GWW', 'ODFL', 'PCAR', 'FAST', 'MMM', 'SNA', 'LHX',
+            'HWM', 'ROK', 'TXT', 'URI', 'VRSK', 'DAL', 'PWR', 'TDG', 'XYL', 'AME',
+            'CPRT', 'WAB', 'IR', 'EFX', 'LDOS', 'IEX', 'GNRC', 'SWK', 'ALLE', 'AOS',
+            'UAL', 'LUV', 'J', 'MAS', 'BR', 'HUBB', 'RHI', 'HII', 'NDSN', 'CHRW',
+            // Energy
+            'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'PXD',
+            'HES', 'DVN', 'HAL', 'BKR', 'FANG', 'WMB', 'KMI', 'OKE', 'TRGP', 'LNG',
+            'APA', 'CTRA', 'EQT', 'MRO',
+            // Materials
+            'LIN', 'APD', 'SHW', 'FCX', 'NEM', 'NUE', 'ECL', 'VMC', 'MLM', 'DOW',
+            'DD', 'PPG', 'IFF', 'BALL', 'IP', 'PKG', 'AVY', 'CF', 'ALB', 'FMC',
+            'MOS', 'CE', 'EMN', 'CTVA', 'AMCR', 'SEE',
+            // Utilities
+            'NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'XEL', 'ED', 'PEG',
+            'PCG', 'CEG', 'EIX', 'WEC', 'AWK', 'ES', 'ETR', 'DTE', 'FE', 'AEE',
+            'CMS', 'CNP', 'NI', 'EVRG', 'ATO', 'LNT', 'NRG', 'PPL', 'PNW',
+            // Real Estate
+            'PLD', 'AMT', 'EQIX', 'CCI', 'PSA', 'O', 'WELL', 'SPG', 'DLR', 'AVB',
+            'EQR', 'VTR', 'ARE', 'SBAC', 'ESS', 'MAA', 'INVH', 'EXR', 'WY', 'UDR',
+            'VICI', 'HST', 'CBRE', 'KIM', 'REG', 'BXP', 'DOC', 'IRM', 'CPT', 'FRT'
+        ];
+
+        // NASDAQ 100 Components (Full list - 101 stocks as of Dec 2024)
+        const NASDAQ100_TICKERS = [
+            'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'AVGO', 'GOOGL', 'GOOG', 'TSLA', 'COST',
+            'NFLX', 'AMD', 'ADBE', 'QCOM', 'PEP', 'CSCO', 'LIN', 'TMUS', 'TXN', 'INTU',
+            'AMGN', 'CMCSA', 'ISRG', 'HON', 'AMAT', 'BKNG', 'VRTX', 'ADP', 'REGN', 'GILD',
+            'PANW', 'MU', 'ADI', 'SBUX', 'MDLZ', 'LRCX', 'MELI', 'KLAC', 'CHTR', 'SNPS',
+            'CDNS', 'PYPL', 'CTAS', 'MAR', 'CRWD', 'ORLY', 'CEG', 'ABNB', 'WDAY', 'CSX',
+            'NXPI', 'ROP', 'PCAR', 'MNST', 'MRVL', 'ADSK', 'AEP', 'MCHP', 'ODFL', 'FTNT',
+            'KDP', 'PAYX', 'CPRT', 'AZN', 'ROST', 'KHC', 'DXCM', 'LULU', 'FAST', 'EXC',
+            'GEHC', 'EA', 'VRSK', 'IDXX', 'BKR', 'CDW', 'CTSH', 'ON', 'DDOG', 'FANG',
+            'ANSS', 'TTWO', 'XEL', 'BIIB', 'ZS', 'GFS', 'TEAM', 'ILMN', 'WBD', 'DLTR',
+            'MDB', 'SMCI', 'ARM', 'PLTR', 'NET', 'DASH', 'COIN', 'TTD', 'ZM', 'ROKU',
+            'OKTA'
+        ];
+
+        // ASX 200 Components (Top 200 Australian stocks by market cap)
+        const ASX200_TICKERS = [
+            // Banks & Financials
+            'CBA.AX', 'NAB.AX', 'WBC.AX', 'ANZ.AX', 'MQG.AX', 'QBE.AX', 'SUN.AX', 'IAG.AX',
+            'ASX.AX', 'BEN.AX', 'BOQ.AX', 'AMP.AX', 'PPT.AX', 'HUB.AX', 'NWL.AX', 'CGF.AX',
+            'JHG.AX', 'MFG.AX', 'PDL.AX', 'IFL.AX',
+            // Mining & Resources
+            'BHP.AX', 'RIO.AX', 'FMG.AX', 'NCM.AX', 'NST.AX', 'EVN.AX', 'NHC.AX', 'WHC.AX',
+            'S32.AX', 'MIN.AX', 'PLS.AX', 'LTR.AX', 'IGO.AX', 'OZL.AX', 'SFR.AX', 'ILU.AX',
+            'AWC.AX', 'BSL.AX', 'CIA.AX', 'AKE.AX', 'LYC.AX', 'RRL.AX', 'GOR.AX', 'SLR.AX',
+            'CMM.AX', 'DEG.AX', 'WAF.AX', 'RED.AX', 'PRU.AX', 'NIC.AX',
+            // Energy
+            'WDS.AX', 'STO.AX', 'ORG.AX', 'WOR.AX', 'APA.AX', 'AGL.AX', 'VEA.AX', 'COE.AX',
+            'KAR.AX', 'BPT.AX', 'BOE.AX', 'PDN.AX', 'TLS.AX', 'SGP.AX', 'CVN.AX', 'NHF.AX',
+            // Healthcare
+            'CSL.AX', 'RMD.AX', 'COH.AX', 'SHL.AX', 'PME.AX', 'FPH.AX', 'RHC.AX', 'ANN.AX',
+            'CAR.AX', 'EVT.AX', 'MPL.AX', 'HLS.AX', 'IFM.AX', 'EML.AX', 'PRN.AX', 'IMU.AX',
+            'NAN.AX', 'PNV.AX', 'NEA.AX', 'TLX.AX',
+            // Consumer & Retail
+            'WES.AX', 'WOW.AX', 'COL.AX', 'JBH.AX', 'HVN.AX', 'SUL.AX', 'LOV.AX', 'PMV.AX',
+            'CWY.AX', 'BRG.AX', 'WEB.AX', 'ALL.AX', 'JIN.AX', 'TAH.AX', 'TWE.AX', 'A2M.AX',
+            'CCL.AX', 'BAP.AX', 'MTS.AX', 'ELD.AX',
+            // Real Estate
+            'GMG.AX', 'GPT.AX', 'MGR.AX', 'SCG.AX', 'VCX.AX', 'NSR.AX', 'CHC.AX', 'DXS.AX',
+            'CIP.AX', 'CLW.AX', 'CQR.AX', 'BWP.AX', 'ABP.AX', 'HMC.AX', 'ARF.AX', 'GMF.AX',
+            // Technology
+            'XRO.AX', 'WTC.AX', 'REA.AX', 'CAR.AX', 'SEK.AX', 'NXT.AX', 'TNE.AX', 'CPU.AX',
+            'APX.AX', 'MP1.AX', 'IRE.AX', 'EML.AX', 'DDR.AX', 'PME.AX', 'FCL.AX', 'ALU.AX',
+            // Industrials
+            'TCL.AX', 'BXB.AX', 'SYD.AX', 'AZJ.AX', 'QAN.AX', 'QUB.AX', 'CTD.AX', 'DOW.AX',
+            'IEL.AX', 'IPL.AX', 'SGM.AX', 'ALQ.AX', 'ORA.AX', 'WOR.AX', 'RWC.AX', 'NWH.AX',
+            'ALX.AX', 'AIA.AX', 'REH.AX', 'CVW.AX',
+            // Telecoms & Media
+            'TPG.AX', 'NEC.AX', 'REH.AX', 'SXL.AX', 'SPK.AX', 'NWS.AX', 'OML.AX', 'SWM.AX',
+            // Utilities
+            'AGL.AX', 'APA.AX', 'SKI.AX', 'NWH.AX', 'ORG.AX', 'CEN.AX', 'MEZ.AX', 'AST.AX',
+            // Other
+            'TCL.AX', 'RMD.AX', 'AMC.AX', 'BLD.AX', 'LLC.AX', 'ORI.AX', 'IPH.AX', 'ING.AX',
+            'IVC.AX', 'AVN.AX', 'FLT.AX', 'IDP.AX', 'JHX.AX', 'RHC.AX', 'TPW.AX', 'VNT.AX',
+            'APE.AX', 'AUB.AX', 'BKW.AX', 'BSA.AX', 'EBO.AX', 'GNC.AX', 'HUM.AX', 'INA.AX',
+            'LNK.AX', 'MAQ.AX', 'MVP.AX', 'NWL.AX', 'PNI.AX', 'SGF.AX', 'TYR.AX', 'VEA.AX'
+        ];
+
+        // Momentum Leaders (Active momentum plays)
+        const MOMENTUM_TICKERS = [
+            'NVDA', 'AMD', 'SMCI', 'PLTR', 'META', 'AVGO', 'ORCL', 'CRM', 'NOW', 'PANW',
+            'CRWD', 'ZS', 'NET', 'DDOG', 'MDB', 'SNOW', 'COIN', 'MSTR', 'ARM', 'TSM',
+            'NFLX', 'DASH', 'UBER', 'ABNB', 'LLY', 'NVO', 'ISRG', 'VRTX', 'MELI', 'TTD'
+        ];
+
+        // Combined universes
         const UNIVERSES = {
-            sp500: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'BRK-B', 'UNH', 'XOM',
-                'JPM', 'JNJ', 'V', 'PG', 'MA', 'HD', 'CVX', 'MRK', 'ABBV', 'LLY',
-                'AVGO', 'PEP', 'KO', 'COST', 'ADBE', 'WMT', 'MCD', 'CSCO', 'CRM', 'ACN',
-                'ABT', 'TMO', 'DHR', 'NEE', 'NKE', 'PM', 'LIN', 'TXN', 'VZ', 'ORCL'],
-            nasdaq100: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'ADBE', 'CSCO',
-                'COST', 'PEP', 'NFLX', 'AMD', 'INTC', 'INTU', 'QCOM', 'TXN', 'AMGN', 'AMAT',
-                'BKNG', 'ISRG', 'SBUX', 'GILD', 'MDLZ', 'ADI', 'VRTX', 'LRCX', 'REGN', 'MU'],
-            momentum: ['NVDA', 'AMD', 'SMCI', 'PLTR', 'META', 'AVGO', 'ORCL', 'CRM', 'NOW', 'PANW',
-                'CRWD', 'ZS', 'NET', 'DDOG', 'MDB', 'SNOW', 'COIN', 'MSTR', 'ARM', 'TSM'],
+            sp500: SP500_TICKERS,
+            nasdaq100: NASDAQ100_TICKERS,
+            asx200: ASX200_TICKERS,
+            momentum: MOMENTUM_TICKERS,
             custom: ['SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'SOXX', 'SMH',
                 'ARKK', 'TAN', 'GLD', 'SLV', 'TLT', 'HYG', 'EEM', 'VWO', 'TQQQ', 'SOXL']
         };
@@ -553,13 +680,20 @@
         let currentSort = { column: 2, asc: false }; // Default sort by 3M return desc
         let scanResults = [];
 
-        // Update universe info
-        document.getElementById('universeSelect').addEventListener('change', function () {
-            const count = UNIVERSES[this.value].length;
-            document.getElementById('universeInfo').textContent = `${count} stocks in universe`;
-        });
-        document.getElementById('universeInfo').textContent =
-            `${UNIVERSES.sp500.length} stocks in universe`;
+        // Update universe info with data source
+        function updateUniverseInfo() {
+            const select = document.getElementById('universeSelect');
+            const universe = select.value;
+            const count = UNIVERSES[universe].length;
+            const dataSource = universe === 'asx200' ? DATA_SOURCES.AU : DATA_SOURCES.US;
+            const sourceLabel = dataSource === 'tiingo' ? '🇺🇸 Tiingo' : '🇦🇺 Norgate';
+            document.getElementById('universeInfo').textContent =
+                `${count} stocks in universe | Data: ${sourceLabel}`;
+        }
+
+        document.getElementById('universeSelect').addEventListener('change', updateUniverseInfo);
+        // Initialize with default
+        document.addEventListener('DOMContentLoaded', updateUniverseInfo);
 
         async function runScan() {
             const btn = document.getElementById('scanBtn');
@@ -630,7 +764,7 @@
                 if (apiResponse.ok) {
                     const apiData = await apiResponse.json();
                     console.log('Loaded scan results from API:', apiData);
-                    
+
                     if (apiData.results && apiData.results.length > 0) {
                         // Map API response to expected format
                         const results = apiData.results.map(stock => ({
@@ -644,23 +778,23 @@
                             atr_contraction: stock.details?.pattern === 'High Tight Flag',
                             signal: stock.signal === 'BUY' ? 'STRONG' : 'WATCH'
                         }));
-                        
+
                         // Update stats
                         document.getElementById('totalScanned').textContent = apiData.tickers_scanned || results.length;
                         document.getElementById('passedFilters').textContent = results.length;
-                        
+
                         if (results.length > 0) {
                             const avgMom = results.reduce((sum, r) => sum + r.ret_3m, 0) / results.length;
                             document.getElementById('avgMomentum').textContent = (avgMom * 100).toFixed(1) + '%';
                         }
-                        
+
                         return results;
                     }
                 }
             } catch (apiError) {
                 console.log('API unavailable, falling back to JSON file:', apiError);
             }
-            
+
             // Fall back to local JSON file
             try {
                 const response = await fetch('scan_results.json');

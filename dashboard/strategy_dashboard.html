@@ -474,7 +474,8 @@
     </main>
 
     <script>
-        const API_BASE = 'http://localhost:8001/api';
+        // Legacy API variables - overridden below
+        // const API_BASE = 'http://localhost:8001/api';
         const API_KEY = 'dev-key-change-me';  // Default dev key - change in production
         let dashboardData = null;
         let equityChart = null;
@@ -635,16 +636,16 @@
         }
 
 
-        // API Base URL - Use backend API
-        const API_BASE = '/api';  // Relative path, served by backend
-        
+        // API Base URL - Use relative path for proper proxying
+        const API_BASE = '/api';
+
         // Load data from API (with fallback to JSON)
         async function loadDashboardData() {
             try {
                 // Try API first
                 let data;
                 try {
-                    const response = await fetch(`${API_BASE}/dashboard/quant1/`);
+                    const response = await fetch(`${API_BASE}/dashboard/quant1`);
                     if (response.ok) {
                         data = await response.json();
                         console.log('Loaded from API:', data);
@@ -658,90 +659,150 @@
                     data = await response.json();
                 }
 
-                // 1. Update Timestamp
+                // Update Timestamp
                 if (data.generated_at) {
                     const ts = new Date(data.generated_at).toLocaleString();
-                    document.getElementById('last-updated').textContent = `Last Updated: ${ts}`;
+                    document.getElementById('lastUpdate').textContent = `Last Updated: ${ts}`;
                 }
 
-                // 2. Momentum Metrics
-                if (data.momentum) {
-                    // Check existing elements or create new ones? 
-                    // The HTML structure might expect specific IDs.
-                    // Based on previous view, we had 'bestStrategy', 'highestCagr' etc.
-                    // We will map available data to these placeholders best we can.
+                // Get strategies from the response
+                const strategies = data.strategies || {};
+                const strategyList = Object.entries(strategies);
 
-                    document.getElementById('bestStrategy').textContent = data.momentum.best_performer || '--';
-                    document.getElementById('highestCagr').textContent = (data.momentum.best_return * 100).toFixed(2) + '%';
-
-                    // Use Avg 12m return as a proxy for "Highest CAGR" slot or just update label if possible
-                    // But let's stick to updating values.
+                if (strategyList.length === 0) {
+                    // No strategies available
+                    document.getElementById('comparisonBody').innerHTML =
+                        '<tr><td colspan="8">No strategy data available. Run backtest first.</td></tr>';
+                    return;
                 }
 
-                // 3. Render Strategy Cards (Momentum vs Dual Momentum)
+                // Calculate summary stats
+                let bestCagr = { name: '--', value: 0 };
+                let bestSharpe = { name: '--', value: 0 };
+                let lowestDD = { name: '--', value: 100 };
+
+                strategyList.forEach(([name, s]) => {
+                    if (s.status === 'no_data') return;
+
+                    const metrics = s.metrics || {};
+
+                    // Parse CAGR
+                    let cagr = 0;
+                    const cagrStr = metrics.cagr || metrics.CAGR || '0';
+                    if (typeof cagrStr === 'string') {
+                        cagr = parseFloat(cagrStr.replace('%', ''));
+                    } else {
+                        cagr = parseFloat(cagrStr) * 100;
+                    }
+
+                    // Parse Sharpe
+                    let sharpe = parseFloat(metrics.sharpe_ratio || metrics['Sharpe Ratio'] || 0);
+
+                    // Parse Max Drawdown  
+                    let dd = 0;
+                    const ddStr = metrics.max_drawdown || metrics['Max Drawdown'] || '0';
+                    if (typeof ddStr === 'string') {
+                        dd = Math.abs(parseFloat(ddStr.replace('%', '')));
+                    } else {
+                        dd = Math.abs(parseFloat(ddStr) * 100);
+                    }
+
+                    if (cagr > bestCagr.value) {
+                        bestCagr = { name: name, value: cagr };
+                    }
+                    if (sharpe > bestSharpe.value) {
+                        bestSharpe = { name: name, value: sharpe };
+                    }
+                    if (dd > 0 && dd < lowestDD.value) {
+                        lowestDD = { name: name, value: dd };
+                    }
+                });
+
+                // Update stat cards
+                document.getElementById('bestStrategy').textContent = bestSharpe.name;
+                document.getElementById('highestCagr').textContent = `${bestCagr.value.toFixed(2)}%`;
+                document.getElementById('bestSharpe').textContent = bestSharpe.value.toFixed(3);
+                document.getElementById('lowestDD').textContent = `${lowestDD.value.toFixed(2)}%`;
+                document.getElementById('strategyCount').textContent = strategyList.filter(([, s]) => s.status !== 'no_data').length;
+
+                // Update comparison table
+                const tbody = document.getElementById('comparisonBody');
+                tbody.innerHTML = strategyList.map(([name, s]) => {
+                    if (s.status === 'no_data') {
+                        return `<tr><td class="strategy-name">${name}</td><td colspan="7">No data - run backtest</td></tr>`;
+                    }
+                    const m = s.metrics || {};
+                    return `
+                        <tr>
+                            <td class="strategy-name">${name}</td>
+                            <td>$${(s.final_value || 0).toLocaleString()}</td>
+                            <td>${m.cagr || m.CAGR || '--'}</td>
+                            <td>${m.sharpe_ratio || m['Sharpe Ratio'] || '--'}</td>
+                            <td>${m.sortino_ratio || m['Sortino Ratio'] || '--'}</td>
+                            <td>${m.max_drawdown || m['Max Drawdown'] || '--'}</td>
+                            <td>${m.calmar_ratio || m['Calmar Ratio'] || '--'}</td>
+                            <td>${m.win_rate || m['Win Rate'] || '--'}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Update strategy cards
                 const container = document.getElementById('strategyCards');
-                if (container) {
-                    const strats = [];
-                    if (data.momentum) {
-                        strats.push({
-                            name: 'Momentum',
-                            metrics: {
-                                'Avg Return': (data.momentum.avg_12m_return * 100).toFixed(2) + '%',
-                                'Best Asset': data.momentum.best_performer
-                            }
-                        });
+                container.innerHTML = strategyList.map(([name, s]) => {
+                    if (s.status === 'no_data') {
+                        return `
+                            <div class="strategy-card">
+                                <div class="strategy-header">
+                                    <span class="strategy-card-name">${name}</span>
+                                    <span class="strategy-badge badge-momentum">No Data</span>
+                                </div>
+                                <p style="color: var(--text-secondary);">Run backtest to generate data</p>
+                            </div>
+                        `;
                     }
-
-                    if (data.dual_momentum) {
-                        strats.push({
-                            name: 'Dual Momentum',
-                            metrics: {
-                                'Risk Status': data.dual_momentum.risk_on ? 'RISK ON' : 'RISK OFF'
-                            }
-                        });
-                    }
-
-                    container.innerHTML = strats.map(s => `
-            <div class="strategy-card">
-                <div class="strategy-header">
-                    <span class="strategy-card-name">${s.name}</span>
-                    <span class="strategy-badge badge-momentum">Active</span>
-                </div>
-                <div class="strategy-metrics">
-                    ${Object.entries(s.metrics).map(([k, v]) => `
-                                    <div class="metric-item">
-                                        <span class="metric-label">${k}</span>
-                                        <span class="metric-value">${v}</span>
-                                    </div>
-                                `).join('')}
-                </div>
-            </div>
-            `).join('');
-                }
-
-                // 4. Update Tables (Comparison Table -> repurposed for Top Picks)
-                const tableBody = document.getElementById('comparisonBody');
-                if (tableBody && data.momentum && data.momentum.top_20) {
-                    // Clear header
-                    const thead = document.querySelector('#comparisonTable thead tr');
-                    if (thead) {
-                        thead.innerHTML = '<th>Rank</th><th>Ticker</th><th>Score</th><th>Action</th>';
-                    }
-
-                    tableBody.innerHTML = data.momentum.top_20.slice(0, 10).map(row => `
-            <tr>
-                <td>${row.rank}</td>
-                <td class="font-semibold text-blue-400">${row.ticker}</td>
-                <td class="${row.score > 0 ? 'text-green-400' : 'text-red-400'}">${(row.score * 100).toFixed(2)}%</td>
-                <td>
-                    <a href="https://finance.yahoo.com/quote/${row.ticker}" target="_blank" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded">Chart</a>
-                </td>
-            </tr>
-                     `).join('');
-                }
+                    const m = s.metrics || {};
+                    const badgeClass = name.includes('Momentum') ? 'badge-momentum' :
+                        name.includes('HRP') ? 'badge-hrp' : 'badge-dual';
+                    return `
+                        <div class="strategy-card">
+                            <div class="strategy-header">
+                                <span class="strategy-card-name">${name}</span>
+                                <span class="strategy-badge ${badgeClass}">Active</span>
+                            </div>
+                            <div class="strategy-metrics">
+                                <div class="metric-item">
+                                    <span class="metric-label">CAGR</span>
+                                    <span class="metric-value">${m.cagr || m.CAGR || '--'}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Sharpe</span>
+                                    <span class="metric-value">${m.sharpe_ratio || m['Sharpe Ratio'] || '--'}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Volatility</span>
+                                    <span class="metric-value">${m.volatility || m.Volatility || '--'}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Max DD</span>
+                                    <span class="metric-value">${m.max_drawdown || m['Max Drawdown'] || '--'}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Win Rate</span>
+                                    <span class="metric-value">${m.win_rate || m['Win Rate'] || '--'}</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Final Value</span>
+                                    <span class="metric-value">$${(s.final_value || 0).toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
 
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
+                document.getElementById('comparisonBody').innerHTML =
+                    `<tr><td colspan="8">Error loading data: ${error.message}</td></tr>`;
             }
         }
 
