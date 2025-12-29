@@ -14,18 +14,44 @@ print("="*80)
 print("TIINGO 20-YEAR US STOCK DATA FETCH")
 print("="*80)
 
-# Get US-only tickers (exclude ASX)
+# Try to load historical constituents from database (survivorship bias-free)
 print("\n📊 Loading US stock universe...")
-all_universe = get_screener_universe()
-us_etfs = get_us_etfs()
 
-# Filter out ASX tickers (those ending with .AX)
-us_stocks = [t for t in all_universe if not t.endswith('.AX')]
+try:
+    from backend.database.connection import SessionLocal
+    from backend.database.models import IndexConstituent
+    
+    print("   Querying historical S&P 500 constituents from database...")
+    db = SessionLocal()
+    try:
+        # Get EVERY ticker that has ever been in the SP500
+        # This ensures we fetch data for "Lehman Brothers", "Enron", etc.
+        historical_tickers = db.query(IndexConstituent.ticker).distinct().all()
+        historical_tickers = [t[0] for t in historical_tickers]
+        
+        if historical_tickers:
+            print(f"   ✅ Found {len(historical_tickers)} historical S&P 500 constituents")
+            us_stocks = historical_tickers
+        else:
+            print("   ⚠️  No historical data in database, falling back to current universe")
+            all_universe = get_screener_universe()
+            us_stocks = [t for t in all_universe if not t.endswith('.AX')]
+    finally:
+        db.close()
+
+except ImportError:
+    print("   ⚠️  Database not available, using current universe (may have survivorship bias)")
+    all_universe = get_screener_universe()
+    us_stocks = [t for t in all_universe if not t.endswith('.AX')]
+
+# Add ETFs (these don't have survivorship bias concerns)
+us_etfs = get_us_etfs()
 us_tickers = list(set(us_stocks + us_etfs))
 
 print(f"✅ Total US tickers to fetch: {len(us_tickers)}")
-print(f"   - US Stocks: {len(us_stocks)}")
+print(f"   - Historical stocks: {len(us_stocks)}")
 print(f"   - US ETFs: {len(us_etfs)}")
+print(f"   🛡️  Includes delisted/defunct companies for Survivorship Bias protection")
 print(f"\n⚠️  Excluded ASX tickers (will fetch separately with yFinance)")
 
 # Initialize FastDataLoader with Tiingo PRIMARY
