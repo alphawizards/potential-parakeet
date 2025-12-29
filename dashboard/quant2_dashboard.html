@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quant 2.0 Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="src/universe-selector.js"></script>
     <style>
         :root {
             --bg-primary: #0a0a1a;
@@ -397,7 +398,8 @@
                 padding: 20px;
             }
 
-            .regime-banner {
+            .regime-banner,
+            .universe-banner {
                 flex-direction: column;
                 align-items: flex-start;
             }
@@ -406,6 +408,39 @@
                 margin-left: 0;
                 margin-top: 16px;
             }
+
+            .universe-stats {
+                margin-left: 0;
+                margin-top: 12px;
+            }
+        }
+
+        /* Universe Selector Banner */
+        .universe-banner {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 16px 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .universe-stats {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .universe-stat {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .universe-stat strong {
+            color: var(--accent);
         }
     </style>
 </head>
@@ -429,6 +464,14 @@
     </header>
 
     <main>
+        <!-- Universe Selector Section -->
+        <div class="universe-banner">
+            <div id="universe-selector-container"></div>
+            <div class="universe-stats" id="universe-stats">
+                <span class="universe-stat">Loading...</span>
+            </div>
+        </div>
+
         <!-- Regime Status Banner -->
         <div class="regime-banner">
             <div class="regime-indicator">
@@ -678,60 +721,91 @@
     </main>
 
     <script>
-        // Chart Configuration
-        Chart.defaults.color = '#a0a0c0';
-        Chart.defaults.borderColor = '#2a2a4a';
-
-        // Allocation Pie Chart
-        const allocationCtx = document.getElementById('allocationChart').getContext('2d');
-        new Chart(allocationCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Residual Momentum', 'Stat Arb', 'Short Vol', 'Cash'],
-                datasets: [{
-                    data: [40, 25, 20, 15],
-                    backgroundColor: ['#7b68ee', '#00ff88', '#ff4466', '#666680'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'right'
-                    }
-                }
+        // Initialize charts after Chart.js is fully loaded
+        // Attach to window object to make it globally accessible for setTimeout retry
+        window.initializeCharts = function () {
+            if (typeof Chart === 'undefined') {
+                // Chart.js not ready yet, retry in 100ms
+                setTimeout(window.initializeCharts, 100);
+                return;
             }
-        });
 
-        // Performance Bar Chart
-        const perfCtx = document.getElementById('performanceChart').getContext('2d');
-        new Chart(perfCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Res Mom', 'Stat Arb', 'Regime', 'Meta-Label', 'Short Vol'],
-                datasets: [{
-                    label: 'YTD Return %',
-                    data: [18.2, 12.4, 15.1, 22.3, 8.7],
-                    backgroundColor: ['#7b68ee', '#00ff88', '#ffaa00', '#00d4ff', '#ff4466']
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: '#2a2a4a' }
+            // Chart Configuration
+            Chart.defaults.color = '#a0a0c0';
+            Chart.defaults.borderColor = '#2a2a4a';
+
+            // Allocation Pie Chart
+            const allocationCanvas = document.getElementById('allocationChart');
+            if (allocationCanvas && !Chart.getChart(allocationCanvas)) {
+                const allocationCtx = allocationCanvas.getContext('2d');
+                new Chart(allocationCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Residual Momentum', 'Stat Arb', 'Short Vol', 'Cash'],
+                        datasets: [{
+                            data: [40, 25, 20, 15],
+                            backgroundColor: ['#7b68ee', '#00ff88', '#ff4466', '#666680'],
+                            borderWidth: 0
+                        }]
                     },
-                    x: {
-                        grid: { display: false }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            }
+                        }
                     }
-                }
+                });
             }
-        });
+
+            // Performance Bar Chart
+            const performanceCanvas = document.getElementById('performanceChart');
+            if (performanceCanvas && !Chart.getChart(performanceCanvas)) {
+                const perfCtx = performanceCanvas.getContext('2d');
+                new Chart(perfCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Res Mom', 'Stat Arb', 'Regime', 'Meta-Label', 'Short Vol'],
+                        datasets: [{
+                            label: 'YTD Return %',
+                            data: [18.2, 12.4, 15.1, 22.3, 8.7],
+                            backgroundColor: ['#7b68ee', '#00ff88', '#ffaa00', '#00d4ff', '#ff4466']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#2a2a4a' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+
+            console.log('Charts initialized successfully');
+        }
+
+        // Run initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', window.initializeCharts);
+        } else {
+            // DOM already loaded
+            window.initializeCharts();
+        }
+
+        // Also run on window load as backup
+        window.addEventListener('load', window.initializeCharts);
 
         // Update regime based on data
         function updateRegime(regime, probs) {
@@ -748,14 +822,26 @@
 
         // API Base URL
         const API_BASE = '/api';
-        
+
+        // Universe selector instance
+        let universeSelector = null;
+        let currentUniverse = localStorage.getItem('selectedUniverse') || 'SPX500';
+
         // Load data from API (with fallback to JSON)
-        async function loadDashboardData() {
+        async function loadDashboardData(universe) {
+            universe = universe || currentUniverse;
+
             try {
+                // Update universe stats display
+                const statsEl = document.getElementById('universe-stats');
+                if (statsEl) {
+                    statsEl.innerHTML = '<span class="universe-stat">Loading data...</span>';
+                }
+
                 // Try API first
                 let data;
                 try {
-                    const response = await fetch(`${API_BASE}/dashboard/quant2/`);
+                    const response = await fetch(`${API_BASE}/dashboard/quant2?universe=${universe}`);
                     if (response.ok) {
                         data = await response.json();
                         console.log('Loaded from API:', data);
@@ -772,66 +858,94 @@
                     }
                 }
 
-                    if (data.generated_at) {
-                        const ts = new Date(data.generated_at).toLocaleString();
-                        // Ideally update a timestamp element if exists
-                        console.log("Data generated at:", ts);
-                    }
-
-                    const strategies = data.strategies;
-
-                    // 1. Regime
-                    if (strategies.regime && !strategies.regime.error) {
-                        const r = strategies.regime;
-                        const probs = r.probabilities || { "BULL": 0, "BEAR": 0, "CHOP": 0 };
-                        // Map uppercase keys if needed, dependent on Python output
-                        updateRegime(r.current, {
-                            bull: probs.BULL || probs.Bull || 0,
-                            bear: probs.BEAR || probs.Bear || 0,
-                            chop: probs.CHOP || probs.Chop || 0
-                        });
-
-                        document.getElementById('raRegime').textContent = r.current;
-                        document.getElementById('raConf').textContent = Math.round(Math.max(...Object.values(probs)) * 100) + '%';
-                        document.getElementById('raDays').textContent = r.n_observations || '--';
-                    }
-
-                    // 2. Stat Arb
-                    if (strategies.stat_arb && !strategies.stat_arb.error) {
-                        const s = strategies.stat_arb;
-                        document.getElementById('saClusters').textContent = s.n_clusters;
-                        document.getElementById('saSignals').textContent = s.active_signals;
-                        // Half life not in current JSON, keep default or clear
-                    }
-
-                    // 3. VRP
-                    if (strategies.vrp && !strategies.vrp.error) {
-                        const v = strategies.vrp;
-                        document.getElementById('vrpVix').textContent = v.current_vix;
-                        document.getElementById('vrpPct').textContent = v.vix_percentile + '%';
-                        document.getElementById('vrpSignal').textContent = v.signal;
-                        document.getElementById('vrpTerm').textContent = v.term_structure;
-
-                        // Colorize signal
-                        const sigEl = document.getElementById('vrpSignal');
-                        sigEl.className = 'metric-value ' + (v.signal === 'HARVEST' ? 'positive' : 'negative');
-                    }
-
-                    // 4. Meta Labeling
-                    if (strategies.meta_labeling) {
-                        // Placeholder data mapping
-                        if (strategies.meta_labeling.status === 'ready') {
-                            document.getElementById('mlSignals').textContent = "Ready";
-                            document.getElementById('mlAccepted').textContent = "--";
-                        }
-                    }
-
+                // Update universe stats
+                if (statsEl && data.universe) {
+                    statsEl.innerHTML = `
+                        <span class="universe-stat">📊 <strong>${data.universe.name || universe}</strong></span>
+                        <span class="universe-stat">🏷️ ${data.ticker_count || data.universe.ticker_count || '?'} stocks</span>
+                        <span class="universe-stat">🌍 ${data.universe.region || 'Unknown'}</span>
+                    `;
                 }
+
+                if (data.generated_at) {
+                    const ts = new Date(data.generated_at).toLocaleString();
+                    console.log("Data generated at:", ts);
+                }
+
+                const strategies = data.strategies;
+
+                // 1. Regime
+                if (strategies.regime && !strategies.regime.error) {
+                    const r = strategies.regime;
+                    const probs = r.probabilities || { "BULL": 0, "BEAR": 0, "CHOP": 0 };
+                    updateRegime(r.current, {
+                        bull: probs.BULL || probs.Bull || 0,
+                        bear: probs.BEAR || probs.Bear || 0,
+                        chop: probs.CHOP || probs.Chop || 0
+                    });
+
+                    document.getElementById('raRegime').textContent = r.current;
+                    document.getElementById('raConf').textContent = Math.round(Math.max(...Object.values(probs)) * 100) + '%';
+                    document.getElementById('raDays').textContent = r.n_observations || '--';
+                }
+
+                // 2. Stat Arb
+                if (strategies.stat_arb && !strategies.stat_arb.error) {
+                    const s = strategies.stat_arb;
+                    document.getElementById('saClusters').textContent = s.n_clusters;
+                    document.getElementById('saSignals').textContent = s.active_signals;
+                }
+
+                // 3. VRP
+                if (strategies.vrp && !strategies.vrp.error) {
+                    const v = strategies.vrp;
+                    document.getElementById('vrpVix').textContent = v.current_vix;
+                    document.getElementById('vrpPct').textContent = v.vix_percentile + '%';
+                    document.getElementById('vrpSignal').textContent = v.signal;
+                    document.getElementById('vrpTerm').textContent = v.term_structure;
+
+                    const sigEl = document.getElementById('vrpSignal');
+                    sigEl.className = 'metric-value ' + (v.signal === 'HARVEST' ? 'positive' : 'negative');
+                }
+
+                // 4. Meta Labeling
+                if (strategies.meta_labeling) {
+                    if (strategies.meta_labeling.status === 'ready') {
+                        document.getElementById('mlSignals').textContent = "Ready";
+                        document.getElementById('mlAccepted').textContent = "--";
+                    }
+                }
+
             } catch (e) {
                 console.error('Error loading dashboard data:', e);
+                const statsEl = document.getElementById('universe-stats');
+                if (statsEl) {
+                    statsEl.innerHTML = '<span class="universe-stat" style="color: var(--danger);">⚠️ Failed to load data</span>';
+                }
             }
         }
 
+        // Initialize universe selector
+        async function initUniverseSelector() {
+            if (typeof UniverseSelector === 'undefined') {
+                console.warn('UniverseSelector not loaded, retrying...');
+                setTimeout(initUniverseSelector, 100);
+                return;
+            }
+
+            universeSelector = new UniverseSelector('universe-selector-container', {
+                onSelect: (key, info) => {
+                    console.log('Universe changed to:', key, info);
+                    currentUniverse = key;
+                    loadDashboardData(key);
+                }
+            });
+
+            await universeSelector.init();
+        }
+
+        // Start initialization
+        initUniverseSelector();
         loadDashboardData();
     </script>
 </body>

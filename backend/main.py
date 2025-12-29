@@ -33,6 +33,7 @@ sys.path.insert(0, str(_backend_dir))
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import uvicorn
 from datetime import datetime
@@ -61,6 +62,14 @@ data_router = data_module.router
 strategies_router = strategies_module.router
 dashboard_router = dashboard_module.router
 scanner_router = scanner_module.router
+
+# Import universes router
+universes_module = _import_module("routers.universes")
+universes_router = universes_module.router
+
+# Import quant2 router
+quant2_module = _import_module("routers.quant2")
+quant2_router = quant2_module.router
 
 
 @asynccontextmanager
@@ -136,6 +145,14 @@ app.include_router(data_router)
 app.include_router(strategies_router)
 app.include_router(dashboard_router)
 app.include_router(scanner_router)
+app.include_router(universes_router)
+app.include_router(quant2_router)
+
+# Mount static files for dashboard
+dashboard_path = _app_dir / "dashboard"
+if dashboard_path.exists():
+    app.mount("/dashboard", StaticFiles(directory=str(dashboard_path), html=True), name="dashboard")
+    print(f"✅ Dashboard mounted at /dashboard from {dashboard_path}")
 
 
 # Global exception handler
@@ -177,7 +194,8 @@ def root():
             "data": "/api/data",
             "strategies": "/api/strategies",
             "dashboard": "/api/dashboard",
-            "scanner": "/api/scanner"
+            "scanner": "/api/scanner",
+            "universes": "/api/universes"
         },
         "data_sources": {
             "tiingo": "US Stocks, ETFs, Mutual Funds, Gold (Premium)",

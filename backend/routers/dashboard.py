@@ -205,9 +205,12 @@ async def get_quant1_dashboard() -> Dict[str, Any]:
 
 
 @router.get("/quant2")
-async def get_quant2_dashboard() -> Dict[str, Any]:
+async def get_quant2_dashboard(universe: str = "SPX500") -> Dict[str, Any]:
     """
     Get Quant 2.0 dashboard data.
+    
+    Args:
+        universe: Stock universe to use (SPX500, NASDAQ100, ASX200, etc.)
     
     Includes:
     - Regime Detection (HMM)
@@ -217,12 +220,23 @@ async def get_quant2_dashboard() -> Dict[str, Any]:
     - Short Volatility
     - NCO Optimization
     """
+    # Get universe info
+    try:
+        from strategy.stock_universe import get_universe_info, get_universe_tickers
+        universe_info = get_universe_info(universe)
+        universe_tickers = get_universe_tickers(universe)
+    except (ImportError, ValueError) as e:
+        # Fallback if universe module unavailable or invalid key
+        universe_info = {"name": universe, "ticker_count": 0, "error": str(e)}
+        universe_tickers = []
+    
     # Try to load from generated JSON first
     quant2_data = load_json_file("dashboard/data/quant2_dashboard.json")
     
     if quant2_data:
         quant2_data["source"] = "cached"
         quant2_data["retrieved_at"] = datetime.now().isoformat()
+        quant2_data["universe"] = universe_info
         return quant2_data
     
     # Generate fresh data
@@ -236,6 +250,9 @@ async def get_quant2_dashboard() -> Dict[str, Any]:
     data = {
         "generated_at": datetime.now().isoformat(),
         "source": "live",
+        "universe": universe_info,
+        "universe_key": universe,
+        "ticker_count": len(universe_tickers),
         "regime": {
             "current": "UNKNOWN",
             "probabilities": {"bull": 0.33, "bear": 0.33, "sideways": 0.34},

@@ -34,7 +34,8 @@ class BacktestRequest(BaseModel):
     start_date: str = Field(default="2020-01-01", description="Start date (YYYY-MM-DD)")
     end_date: Optional[str] = Field(default=None, description="End date (YYYY-MM-DD), defaults to today")
     initial_capital: float = Field(default=100000.0, description="Initial capital in AUD")
-    tickers: Optional[List[str]] = Field(default=None, description="Custom ticker list")
+    tickers: Optional[List[str]] = Field(default=None, description="Custom ticker list (overrides universe)")
+    universe: str = Field(default="SPX500", description="Stock universe: SPX500, NASDAQ100, ASX200, RUSSELL2000, etc.")
     optimization_method: str = Field(default="HRP", description="HRP, MVO, InverseVol, or EqualWeight")
 
 

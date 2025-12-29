@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Residual Momentum - Quant 2.0</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="src/universe-selector.js"></script>
     <style>
         :root {
             --bg-primary: #0a0a1a;
@@ -284,6 +285,45 @@
                 grid-template-columns: 1fr 1fr;
             }
         }
+
+        /* Universe Selector Banner */
+        .universe-banner {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 16px 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .universe-stats {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .universe-stat {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .universe-stat strong {
+            color: var(--accent);
+        }
+
+        @media (max-width: 768px) {
+            .universe-banner {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .universe-stats {
+                margin-top: 12px;
+            }
+        }
     </style>
 </head>
 
@@ -300,6 +340,14 @@
     </header>
 
     <main>
+        <!-- Universe Selector -->
+        <div class="universe-banner">
+            <div id="universe-selector-container"></div>
+            <div class="universe-stats" id="universe-stats">
+                <span class="universe-stat">Loading...</span>
+            </div>
+        </div>
+
         <div class="page-header">
             <h1 class="page-title">Residual Momentum Strategy</h1>
             <p class="page-desc">Factor-neutral momentum using Fama-French 3-factor regression. Stocks ranked by
@@ -550,6 +598,115 @@
                 }
             }
         });
+
+        // Universe selector initialization
+        const API_BASE = '/api';
+        let universeSelector = null;
+        let currentUniverse = localStorage.getItem('selectedUniverse') || 'SPX500';
+
+        async function loadResidualMomentumData(universe) {
+            universe = universe || currentUniverse;
+
+            const statsEl = document.getElementById('universe-stats');
+            if (statsEl) {
+                statsEl.innerHTML = '<span class="universe-stat">Loading ' + universe + ' data...</span>';
+            }
+
+            try {
+                // Use new dedicated residual momentum endpoint
+                const response = await fetch(`${API_BASE}/quant2/residual-momentum?universe=${universe}&top_n=20`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Loaded residual momentum data:', data);
+
+                    // Update universe stats display
+                    if (statsEl) {
+                        statsEl.innerHTML = `
+                            <span class="universe-stat">📊 <strong>${data.universe_name}</strong></span>
+                            <span class="universe-stat">🏷️ ${data.stocks_ranked} stocks ranked</span>
+                            <span class="universe-stat">📈 Top Score: ${data.top_score}</span>
+                        `;
+                    }
+
+                    // Update summary stats
+                    document.getElementById('topScore').textContent = data.top_score.toFixed(2);
+                    document.getElementById('stockCount').textContent = data.stocks_ranked;
+                    document.getElementById('avgR2').textContent = data.avg_r_squared.toFixed(2);
+
+                    // Update rankings table
+                    updateRankingsTable(data.rankings);
+
+                    console.log(`Loaded ${data.rankings.length} stocks for ${universe}`);
+                } else {
+                    throw new Error('API returned ' + response.status);
+                }
+            } catch (e) {
+                console.error('Failed to load residual momentum data:', e);
+                if (statsEl) {
+                    statsEl.innerHTML = `<span class="universe-stat" style="color: var(--warning);">⚠️ <strong>${universe}</strong> - API unavailable, showing sample data</span>`;
+                }
+            }
+        }
+
+        function updateRankingsTable(rankings) {
+            const tbody = document.querySelector('#rankingsTable tbody');
+            if (!tbody || !rankings || rankings.length === 0) return;
+
+            // Clear existing rows
+            tbody.innerHTML = '';
+
+            // Add new rows
+            rankings.forEach((stock, index) => {
+                const row = document.createElement('tr');
+
+                // Determine score color
+                const scoreColor = stock.score >= 1 ? 'var(--success)' :
+                    stock.score >= 0 ? 'var(--accent)' :
+                        stock.score >= -1 ? 'var(--warning)' : 'var(--danger)';
+
+                // Calculate strength bar width (normalize score to 0-100%)
+                const strengthPct = Math.min(100, Math.max(0, (stock.score + 2) * 25));
+                const strengthColor = stock.score >= 0 ? 'var(--success)' : 'var(--danger)';
+
+                row.innerHTML = `
+                    <td>${stock.rank}</td>
+                    <td><span class="ticker-badge">${stock.ticker}</span></td>
+                    <td style="color: ${scoreColor}; font-weight: 600;">${stock.score.toFixed(2)}</td>
+                    <td>
+                        <div class="strength-bar">
+                            <div class="strength-fill" style="width: ${strengthPct}%; background: ${strengthColor};"></div>
+                        </div>
+                    </td>
+                    <td>${stock.r_squared?.toFixed(2) || '--'}</td>
+                    <td>${stock.beta_mkt?.toFixed(2) || '--'}</td>
+                    <td style="color: ${stock.beta_smb < 0 ? 'var(--danger)' : 'inherit'};">${stock.beta_smb?.toFixed(2) || '--'}</td>
+                    <td style="color: ${stock.beta_hml < 0 ? 'var(--danger)' : 'inherit'};">${stock.beta_hml?.toFixed(2) || '--'}</td>
+                    <td>${stock.residual_vol?.toFixed(1) || '--'}%</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+        }
+
+        async function initUniverseSelector() {
+            if (typeof UniverseSelector === 'undefined') {
+                setTimeout(initUniverseSelector, 100);
+                return;
+            }
+
+            universeSelector = new UniverseSelector('universe-selector-container', {
+                onSelect: (key, info) => {
+                    console.log('Universe changed to:', key);
+                    currentUniverse = key;
+                    loadResidualMomentumData(key);
+                }
+            });
+
+            await universeSelector.init();
+        }
+
+        initUniverseSelector();
+        loadResidualMomentumData();
     </script>
 </body>
 
