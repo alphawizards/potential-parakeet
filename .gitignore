@@ -44,6 +44,12 @@ dist/
 build/
 *.egg-info/
 
+# Node
+node_modules/
+
+# Test Results
+test-results/
+
 # Test
 .pytest_cache/
 .coverage

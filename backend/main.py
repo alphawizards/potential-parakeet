@@ -71,6 +71,10 @@ universes_router = universes_module.router
 quant2_module = _import_module("routers.quant2")
 quant2_router = quant2_module.router
 
+# Import validation router (DSR/PSR)
+validation_module = _import_module("routers.validation")
+validation_router = validation_module.router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -147,6 +151,7 @@ app.include_router(dashboard_router)
 app.include_router(scanner_router)
 app.include_router(universes_router)
 app.include_router(quant2_router)
+app.include_router(validation_router)
 
 # Mount static files for dashboard
 dashboard_path = _app_dir / "dashboard"

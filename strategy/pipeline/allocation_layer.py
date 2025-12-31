@@ -307,6 +307,149 @@ class AllocationManager:
         return self._results.get(strategy_name)
 
 
+# =============================================================================
+# SCIPY-BASED UTILITY OPTIMIZATION WITH TURNOVER COSTS
+# =============================================================================
+
+from scipy.optimize import minimize
+
+
+def optimize_utility_with_costs(
+    expected_returns: np.ndarray,
+    cov_matrix: np.ndarray,
+    current_weights: np.ndarray = None,
+    lambda_risk: float = 1.0,
+    cost_bps: float = 10.0,
+    min_weight: float = 0.0,
+    max_weight: float = 1.0
+) -> np.ndarray:
+    """
+    Optimize portfolio weights with explicit transaction cost penalty.
+    
+    Maximizes: Expected Return - λ * Risk - Transaction Costs
+    
+    This is critical for small accounts where trading costs matter.
+    
+    Args:
+        expected_returns: Array of expected returns for each asset
+        cov_matrix: Covariance matrix of returns
+        current_weights: Current portfolio weights (for turnover calc)
+        lambda_risk: Risk aversion coefficient (higher = more conservative)
+        cost_bps: Transaction cost in basis points per unit turnover
+        min_weight: Minimum weight per asset (default: 0 = long only)
+        max_weight: Maximum weight per asset (default: 1)
+        
+    Returns:
+        Optimal portfolio weights as numpy array
+        
+    Example:
+        >>> returns = np.array([0.08, 0.12, 0.06])  # 8%, 12%, 6% expected
+        >>> cov = np.array([[0.04, 0.01, 0.005],
+        ...                 [0.01, 0.09, 0.01],
+        ...                 [0.005, 0.01, 0.02]])
+        >>> current = np.array([0.33, 0.33, 0.34])
+        >>> optimal = optimize_utility_with_costs(returns, cov, current)
+    """
+    n = len(expected_returns)
+    
+    # Initialize with current weights or equal weight
+    if current_weights is None:
+        w0 = np.ones(n) / n
+    else:
+        w0 = np.array(current_weights)
+    
+    # Convert cost from bps to decimal
+    cost_decimal = cost_bps / 10000.0
+    
+    def objective(w):
+        # 1. Portfolio Expected Return
+        ret = np.dot(w, expected_returns)
+        
+        # 2. Portfolio Variance (Risk)
+        risk = np.dot(w.T, np.dot(cov_matrix, w))
+        
+        # 3. Transaction Costs (L1 norm of weight change)
+        turnover = np.sum(np.abs(w - w0))
+        cost = turnover * cost_decimal
+        
+        # Maximize Utility = Return - λ*Risk - Cost
+        # Minimize negative utility
+        utility = ret - (lambda_risk * risk) - cost
+        return -utility
+    
+    # Constraints: Fully invested (weights sum to 1)
+    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+    
+    # Bounds: Long only (or custom min/max)
+    bounds = tuple((min_weight, max_weight) for _ in range(n))
+    
+    # Optimize using SLSQP (Sequential Least Squares Programming)
+    result = minimize(
+        objective, 
+        w0, 
+        method='SLSQP', 
+        bounds=bounds, 
+        constraints=constraints,
+        options={'maxiter': 1000, 'ftol': 1e-9}
+    )
+    
+    if not result.success:
+        print(f"⚠️ Optimization warning: {result.message}")
+    
+    return result.x
+
+
+def calculate_optimal_weights_with_costs(
+    returns: pd.DataFrame,
+    current_weights: pd.Series = None,
+    lambda_risk: float = 1.0,
+    cost_bps: float = 10.0,
+    lookback: int = 252
+) -> pd.Series:
+    """
+    Convenience function: Calculate cost-aware optimal weights from returns.
+    
+    Args:
+        returns: DataFrame of asset returns
+        current_weights: Current portfolio weights
+        lambda_risk: Risk aversion
+        cost_bps: Transaction cost in basis points
+        lookback: Lookback period for covariance estimation
+        
+    Returns:
+        Optimal weights as pandas Series
+    """
+    # Use most recent data for estimation
+    recent_returns = returns.iloc[-lookback:]
+    
+    # Expected returns (annualized mean)
+    expected_returns = recent_returns.mean() * 252
+    
+    # Covariance matrix (annualized)
+    cov_matrix = recent_returns.cov() * 252
+    
+    # Convert to numpy
+    assets = returns.columns.tolist()
+    exp_ret_arr = expected_returns.values
+    cov_arr = cov_matrix.values
+    
+    if current_weights is not None:
+        curr_w = current_weights.reindex(assets, fill_value=0).values
+    else:
+        curr_w = None
+    
+    # Optimize
+    optimal_w = optimize_utility_with_costs(
+        exp_ret_arr,
+        cov_arr,
+        curr_w,
+        lambda_risk=lambda_risk,
+        cost_bps=cost_bps
+    )
+    
+    return pd.Series(optimal_w, index=assets)
+
+
 def calculate_rebalance_trades(
     current_weights: pd.Series,
     target_weights: pd.Series,
