@@ -51,17 +51,23 @@ class PortfolioBacktester:
     
     def __init__(self,
                  prices: pd.DataFrame,
-                 initial_capital: float = None):
+                 initial_capital: float = None,
+                 volumes: pd.DataFrame = None,
+                 max_volume_participation: float = 0.02):
         """
         Initialize backtester.
         
         Args:
             prices: DataFrame of prices (AUD-normalized)
             initial_capital: Starting capital in AUD
+            volumes: DataFrame of daily volumes (optional, for liquidity constraints)
+            max_volume_participation: Max fraction of daily volume (default: 2%)
         """
         self.prices = prices
         self.initial_capital = initial_capital or BACKTEST_CONFIG.INITIAL_CAPITAL_AUD
         self.returns = prices.pct_change().fillna(0)
+        self.volumes = volumes
+        self.max_volume_participation = max_volume_participation
         
     def run_backtest(self,
                      weights_func: Callable[[pd.DataFrame, int], pd.Series],
@@ -176,6 +182,37 @@ class PortfolioBacktester:
                     if ticker in full_weights.index:
                         full_weights[ticker] = target_weights[ticker]
                 target_weights = full_weights
+                
+                # --- LIQUIDITY GUARDRAIL: Cap positions at 2% of daily volume ---
+                if self.volumes is not None and date in self.volumes.index:
+                    daily_vol = self.volumes.loc[date]
+                    max_shares_map = (daily_vol * self.max_volume_participation).to_dict()
+                    
+                    adjusted_weights = target_weights.copy()
+                    liquidity_capped = False
+                    
+                    for asset in target_weights.index:
+                        weight = target_weights[asset]
+                        if weight == 0 or asset not in self.prices.columns:
+                            continue
+                        
+                        price = self.prices.loc[date, asset]
+                        if price <= 0:
+                            continue
+                            
+                        target_shares = (weight * current_value) / price
+                        max_shares = max_shares_map.get(asset, float('inf'))
+                        
+                        if target_shares > max_shares and max_shares > 0:
+                            # Cap at max allowed shares
+                            allowed_weight = (max_shares * price) / current_value
+                            adjusted_weights[asset] = allowed_weight
+                            liquidity_capped = True
+                    
+                    if liquidity_capped:
+                        # Note: We reduce exposure rather than renormalize
+                        # This creates a "cash buffer" for illiquid positions
+                        target_weights = adjusted_weights
                 
                 # Schedule execution for T+execution_delay
                 if execution_delay > 0 and i + execution_delay < len(dates):

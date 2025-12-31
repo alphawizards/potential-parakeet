@@ -291,6 +291,102 @@ async def validate_universe(
         )
 
 
+class AllStocksResponse(BaseModel):
+    """Response for all stocks endpoint with filtering."""
+    universe: str
+    universe_name: str
+    generated_at: str
+    total_stocks: int
+    filtered_stocks: int
+    sort_by: str
+    sort_order: str
+    min_score: Optional[float]
+    max_score: Optional[float]
+    stocks: List[StockRanking]
+
+
+@router.get("/residual-momentum/all", response_model=AllStocksResponse)
+async def get_all_residual_momentum(
+    universe: str = Query(default="SPX500", description="Stock universe (SPX500, NASDAQ100, ASX200)"),
+    sort_by: str = Query(default="score", description="Sort column: score, ticker, r_squared, beta_mkt"),
+    sort_order: str = Query(default="desc", description="Sort order: asc or desc"),
+    min_score: Optional[float] = Query(default=None, description="Minimum score filter"),
+    max_score: Optional[float] = Query(default=None, description="Maximum score filter")
+):
+    """
+    Get ALL stocks ranked by residual momentum for a universe.
+    
+    Returns every stock in the selected universe with full factor exposure data.
+    Supports sorting by any column and filtering by score range.
+    
+    Parameters:
+    - universe: Stock universe (SPX500, NASDAQ100, ASX200, etc.)
+    - sort_by: Column to sort by (score, ticker, r_squared, beta_mkt)
+    - sort_order: Sort direction (asc, desc)
+    - min_score: Only include stocks with score >= this value
+    - max_score: Only include stocks with score <= this value
+    """
+    # Validate universe
+    if universe not in UNIVERSE_REGISTRY:
+        available = list(UNIVERSE_REGISTRY.keys())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid universe '{universe}'. Available: {available}"
+        )
+    
+    # Get universe info and tickers
+    universe_info = get_universe_info(universe)
+    tickers = get_universe_tickers(universe)
+    
+    if not tickers:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No tickers found for universe '{universe}'"
+        )
+    
+    # Try live calculation first, fallback to mock
+    result = await calculate_residual_momentum_live(tickers)
+    if result is None:
+        result = generate_mock_residual_momentum(tickers, universe)
+    
+    # Get all rankings
+    all_rankings = result["rankings"]
+    
+    # Apply score filters
+    if min_score is not None:
+        all_rankings = [r for r in all_rankings if r["score"] >= min_score]
+    if max_score is not None:
+        all_rankings = [r for r in all_rankings if r["score"] <= max_score]
+    
+    # Apply sorting
+    reverse = sort_order.lower() == "desc"
+    if sort_by == "ticker":
+        all_rankings.sort(key=lambda x: x["ticker"], reverse=reverse)
+    elif sort_by == "r_squared":
+        all_rankings.sort(key=lambda x: x.get("r_squared", 0) or 0, reverse=reverse)
+    elif sort_by == "beta_mkt":
+        all_rankings.sort(key=lambda x: x.get("beta_mkt", 0) or 0, reverse=reverse)
+    else:  # Default to score
+        all_rankings.sort(key=lambda x: x["score"], reverse=reverse)
+    
+    # Re-assign ranks after sorting
+    for i, ranking in enumerate(all_rankings, 1):
+        ranking["rank"] = i
+    
+    return AllStocksResponse(
+        universe=universe,
+        universe_name=universe_info["name"],
+        generated_at=datetime.now().isoformat(),
+        total_stocks=len(tickers),
+        filtered_stocks=len(all_rankings),
+        sort_by=sort_by,
+        sort_order=sort_order,
+        min_score=min_score,
+        max_score=max_score,
+        stocks=[StockRanking(**r) for r in all_rankings]
+    )
+
+
 @router.get("/universes-summary")
 async def get_universes_summary() -> Dict[str, Any]:
     """
@@ -327,3 +423,4 @@ async def get_universes_summary() -> Dict[str, Any]:
         "total_universes": len(summaries),
         "universes": summaries
     }
+

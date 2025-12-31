@@ -165,26 +165,87 @@
             margin-bottom: 12px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
+        }
+
+        .criteria-title-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-all-btn {
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-all-btn:hover {
+            background: rgba(0, 212, 255, 0.2);
         }
 
         .criteria-list {
             list-style: none;
         }
 
-        .criteria-list li {
+        /* Interactive Filter Toggle */
+        .filter-toggle {
             font-size: 13px;
-            color: var(--text-secondary);
-            padding: 4px 0;
+            padding: 8px 12px;
+            margin: 4px 0;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
         }
 
-        .criteria-list li::before {
-            content: '✓';
-            color: var(--success);
-            font-size: 10px;
+        .filter-toggle:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--border);
+        }
+
+        .filter-toggle.active {
+            color: var(--text-primary);
+            background: rgba(0, 255, 136, 0.08);
+        }
+
+        .filter-toggle.inactive {
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+
+        .filter-toggle .toggle-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .filter-toggle.active .toggle-icon {
+            background: var(--success);
+            color: #000;
+        }
+
+        .filter-toggle.inactive .toggle-icon {
+            background: var(--border);
+            color: var(--text-secondary);
+        }
+
+        .filter-toggle .filter-label {
+            flex: 1;
         }
 
         /* Stats Row */
@@ -443,34 +504,86 @@
         <!-- Filter Criteria -->
         <div class="criteria-grid">
             <div class="criteria-card">
-                <div class="criteria-title">💰 Liquidity</div>
-                <ul class="criteria-list">
-                    <li>Price > $5.00</li>
-                    <li>20D Avg $ Volume > $20M</li>
-                </ul>
+                <div class="criteria-title">
+                    <span class="criteria-title-left">💰 Liquidity</span>
+                    <button class="toggle-all-btn" onclick="toggleCategory('liquidity')">☑ All</button>
+                </div>
+                <div class="criteria-list">
+                    <div class="filter-toggle active" data-category="liquidity" data-filter="price_min"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">Price ≥ $1.00</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="liquidity" data-filter="volume_20d"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">20D Avg $ Volume > $20M</span>
+                    </div>
+                </div>
             </div>
             <div class="criteria-card">
-                <div class="criteria-title">🚀 Momentum</div>
-                <ul class="criteria-list">
-                    <li>3-Month Return ≥ 30%</li>
-                    <li>1-Month Return ≥ 10%</li>
-                    <li>Relative Strength > SPY</li>
-                </ul>
+                <div class="criteria-title">
+                    <span class="criteria-title-left">🚀 Momentum</span>
+                    <button class="toggle-all-btn" onclick="toggleCategory('momentum')">☑ All</button>
+                </div>
+                <div class="criteria-list">
+                    <div class="filter-toggle active" data-category="momentum" data-filter="ret_3m"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">3-Month Return ≥ 30%</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="momentum" data-filter="ret_1m"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">1-Month Return ≥ 10%</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="momentum" data-filter="rs_spy"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">Relative Strength > SPY</span>
+                    </div>
+                </div>
             </div>
             <div class="criteria-card">
-                <div class="criteria-title">📈 Trend</div>
-                <ul class="criteria-list">
-                    <li>Close > SMA10 > SMA20 > SMA50</li>
-                    <li>Close > SMA200</li>
-                    <li>SMA50 Slope Positive</li>
-                </ul>
+                <div class="criteria-title">
+                    <span class="criteria-title-left">📈 Trend</span>
+                    <button class="toggle-all-btn" onclick="toggleCategory('trend')">☑ All</button>
+                </div>
+                <div class="criteria-list">
+                    <div class="filter-toggle active" data-category="trend" data-filter="sma_alignment"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">Close > SMA10 > SMA20 > SMA50</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="trend" data-filter="above_sma200"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">Close > SMA200</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="trend" data-filter="sma50_slope"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">SMA50 Slope Positive</span>
+                    </div>
+                </div>
             </div>
             <div class="criteria-card">
-                <div class="criteria-title">🎯 Consolidation</div>
-                <ul class="criteria-list">
-                    <li>Price ≥ 85% of 126D High</li>
-                    <li>ATR(14) &lt; 20D Avg ATR</li>
-                </ul>
+                <div class="criteria-title">
+                    <span class="criteria-title-left">🎯 Consolidation</span>
+                    <button class="toggle-all-btn" onclick="toggleCategory('consolidation')">☑ All</button>
+                </div>
+                <div class="criteria-list">
+                    <div class="filter-toggle active" data-category="consolidation" data-filter="near_high"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">Price ≥ 85% of 126D High</span>
+                    </div>
+                    <div class="filter-toggle active" data-category="consolidation" data-filter="atr_contraction"
+                        onclick="toggleFilter(this)">
+                        <span class="toggle-icon">✓</span>
+                        <span class="filter-label">ATR(14) < 20D Avg ATR</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -516,17 +629,18 @@
                 <tr>
                     <th onclick="sortTable(0)">Ticker</th>
                     <th onclick="sortTable(1)">Price</th>
-                    <th onclick="sortTable(2)">3M Return</th>
-                    <th onclick="sortTable(3)">1M Return</th>
-                    <th onclick="sortTable(4)">RS vs SPY</th>
-                    <th onclick="sortTable(5)">% from 126D High</th>
-                    <th onclick="sortTable(6)">ATR Contraction</th>
-                    <th onclick="sortTable(7)">Signal</th>
+                    <th onclick="sortTable(2)">Vol 20D Avg</th>
+                    <th onclick="sortTable(3)">3M Return</th>
+                    <th onclick="sortTable(4)">1M Return</th>
+                    <th onclick="sortTable(5)">RS vs SPY</th>
+                    <th onclick="sortTable(6)">% from 126D High</th>
+                    <th onclick="sortTable(7)">ATR Contraction</th>
+                    <th onclick="sortTable(8)">Signal</th>
                 </tr>
             </thead>
             <tbody id="resultsBody">
                 <tr>
-                    <td colspan="8" class="no-results">
+                    <td colspan="9" class="no-results">
                         <div class="no-results-icon">🔍</div>
                         <div>Click "Run Scan" to screen for Quallamaggie setups</div>
                     </td>
@@ -677,6 +791,101 @@
                 'ARKK', 'TAN', 'GLD', 'SLV', 'TLT', 'HYG', 'EEM', 'VWO', 'TQQQ', 'SOXL']
         };
 
+        // Filter Configuration - tracks which filters are active
+        const FILTER_CONFIG = {
+            liquidity: {
+                price_min: { active: true, value: 1 },
+                volume_20d: { active: true, value: 20e6 }
+            },
+            momentum: {
+                ret_3m: { active: true, value: 0.30 },
+                ret_1m: { active: true, value: 0.10 },
+                rs_spy: { active: true, value: 0 }
+            },
+            trend: {
+                sma_alignment: { active: true },
+                above_sma200: { active: true },
+                sma50_slope: { active: true }
+            },
+            consolidation: {
+                near_high: { active: true, value: 0.85 },
+                atr_contraction: { active: true }
+            }
+        };
+
+        // Toggle individual filter
+        function toggleFilter(element) {
+            const category = element.dataset.category;
+            const filter = element.dataset.filter;
+
+            // Toggle state
+            FILTER_CONFIG[category][filter].active = !FILTER_CONFIG[category][filter].active;
+            const isActive = FILTER_CONFIG[category][filter].active;
+
+            // Update UI
+            element.classList.toggle('active', isActive);
+            element.classList.toggle('inactive', !isActive);
+            element.querySelector('.toggle-icon').textContent = isActive ? '✓' : '✗';
+
+            // Auto re-scan
+            runScan();
+        }
+
+        // Toggle all filters in a category
+        function toggleCategory(category) {
+            const filters = FILTER_CONFIG[category];
+            const allActive = Object.values(filters).every(f => f.active);
+            const newState = !allActive;
+
+            // Update config
+            Object.keys(filters).forEach(key => {
+                filters[key].active = newState;
+            });
+
+            // Update UI
+            document.querySelectorAll(`.filter-toggle[data-category="${category}"]`).forEach(el => {
+                el.classList.toggle('active', newState);
+                el.classList.toggle('inactive', !newState);
+                el.querySelector('.toggle-icon').textContent = newState ? '✓' : '✗';
+            });
+
+            // Auto re-scan
+            runScan();
+        }
+
+        // Apply active filters to data
+        function applyFilters(data) {
+            return data.filter(stock => {
+                // Liquidity filters
+                if (FILTER_CONFIG.liquidity.price_min.active && stock.price < FILTER_CONFIG.liquidity.price_min.value) return false;
+                if (FILTER_CONFIG.liquidity.volume_20d.active && stock.dollarVolume < FILTER_CONFIG.liquidity.volume_20d.value) return false;
+
+                // Momentum filters
+                if (FILTER_CONFIG.momentum.ret_3m.active && stock.ret_3m < FILTER_CONFIG.momentum.ret_3m.value) return false;
+                if (FILTER_CONFIG.momentum.ret_1m.active && stock.ret_1m < FILTER_CONFIG.momentum.ret_1m.value) return false;
+                if (FILTER_CONFIG.momentum.rs_spy.active && stock.rsVsSpy < FILTER_CONFIG.momentum.rs_spy.value) return false;
+
+                // Trend filters (simplified for mock data)
+                if (FILTER_CONFIG.trend.above_sma200.active && !stock.aboveSma200) return false;
+
+                // Consolidation filters
+                if (FILTER_CONFIG.consolidation.near_high.active && stock.pctFromHigh < FILTER_CONFIG.consolidation.near_high.value) return false;
+
+                return true;
+            });
+        }
+
+        // Count active filters
+        function countActiveFilters() {
+            let count = 0;
+            Object.values(FILTER_CONFIG).forEach(category => {
+                Object.values(category).forEach(filter => {
+                    if (filter.active) count++;
+                });
+            });
+            return count;
+        }
+
         let currentSort = { column: 2, asc: false }; // Default sort by 3M return desc
         let scanResults = [];
 
@@ -768,105 +977,129 @@
         }
 
         async function performLocalScan(tickers) {
-            // Try API first, then fall back to local JSON
-            try {
-                // Try API endpoint first
-                const apiResponse = await fetch('/api/scanner/results/?limit=50');
-                if (apiResponse.ok) {
-                    const apiData = await apiResponse.json();
-                    console.log('Loaded scan results from API:', apiData);
+            // Get current universe for filtering
+            const universe = document.getElementById('universeSelect').value;
+            const universeTickers = new Set(UNIVERSES[universe]);
+            const activeFilterCount = countActiveFilters();
 
-                    if (apiData.results && apiData.results.length > 0) {
-                        // Map API response to expected format
-                        const results = apiData.results.map(stock => ({
-                            ticker: stock.ticker,
-                            price: stock.price || 0,
-                            dollarVolume: stock.volume || 0,
-                            ret_3m: (stock.change_pct || 0) / 100 * 3,
-                            ret_1m: (stock.change_pct || 0) / 100,
-                            rs_vs_spy: (stock.details?.rs_rank || 50) / 100 - 0.5,
-                            pct_from_high: 0.9 + Math.random() * 0.1,
-                            atr_contraction: stock.details?.pattern === 'High Tight Flag',
-                            signal: stock.signal === 'BUY' ? 'STRONG' : 'WATCH'
-                        }));
+            // For demo mode: always generate mock data for the full universe
+            // This ensures filters work correctly on complete dataset
+            // API/backend integration would replace this with real data
+            console.log(`Generating mock data for ${universe} (${tickers.length} stocks, ${activeFilterCount} filters active)`);
 
-                        // Update stats
-                        document.getElementById('totalScanned').textContent = apiData.tickers_scanned || results.length;
-                        document.getElementById('passedFilters').textContent = results.length;
+            // Generate universe-specific mock data (most realistic fallback)
+            console.log(`Generating mock scan data for ${universe} with ${tickers.length} tickers (${activeFilterCount} filters active)`);
+            const mockData = generateMockData(tickers);
 
-                        if (results.length > 0) {
-                            const avgMom = results.reduce((sum, r) => sum + r.ret_3m, 0) / results.length;
-                            document.getElementById('avgMomentum').textContent = (avgMom * 100).toFixed(1) + '%';
-                        }
+            // Apply active filters dynamically based on toggle state
+            const filtered = applyFilters(mockData);
 
-                        return results;
-                    }
-                }
-            } catch (apiError) {
-                console.log('API unavailable, falling back to JSON file:', apiError);
-            }
+            // Sort by momentum
+            filtered.sort((a, b) => b.ret_3m - a.ret_3m);
 
-            // Fall back to local JSON file
-            try {
-                const response = await fetch('scan_results.json');
-                if (!response.ok) {
-                    throw new Error('No scan results found. Run: python -m strategy.quallamaggie_scanner');
-                }
-                const data = await response.json();
+            // Limit results: show more when fewer filters are active
+            // All filters off = show all stocks (up to 500 for performance)
+            // Some filters on = show top matching results (up to 100)
+            const maxResults = activeFilterCount === 0 ? 500 : 100;
+            const topResults = filtered.slice(0, maxResults);
 
-                // Update stats from JSON
-                document.getElementById('totalScanned').textContent = data.stats.total_scanned;
-                document.getElementById('passedFilters').textContent = data.stats.final_candidates;
-
-                if (data.candidates.length > 0) {
-                    const avgMom = data.candidates.reduce((sum, r) => sum + r.ret_3m, 0) / data.candidates.length;
-                    document.getElementById('avgMomentum').textContent = (avgMom * 100).toFixed(1) + '%';
-                }
-
-                document.getElementById('scanTime').textContent = new Date(data.scan_time).toLocaleTimeString();
-
-                return data.candidates;
-            } catch (error) {
-                console.error('Error loading scan results:', error);
-                // Return empty if no file exists
-                return [];
-            }
+            // Map to expected format
+            return topResults.map(stock => ({
+                ticker: stock.ticker,
+                price: stock.price,
+                dollarVolume: stock.dollarVolume,
+                ret_3m: stock.ret_3m,
+                ret_1m: stock.ret_1m,
+                rs_vs_spy: stock.rsVsSpy,
+                pct_from_high: stock.pctFromHigh,
+                atr_contraction: stock.atrContraction,
+                signal: stock.perfectAlignment && stock.ret_3m > 0.30 ? 'STRONG' : 'WATCH'
+            }));
         }
 
         function generateMockData(tickers) {
             // Generate realistic mock data for demonstration
-            const highMomentum = ['NVDA', 'SMCI', 'PLTR', 'META', 'AMD', 'AVGO', 'ARM', 'COIN', 'MSTR', 'CRWD'];
-            const moderateMomentum = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'CRM', 'NOW', 'PANW', 'ZS', 'ORCl'];
+            // Data is generated to allow each filter to independently filter the universe
+
+            const highMomentum = [
+                // US Tech leaders
+                'NVDA', 'SMCI', 'PLTR', 'META', 'AMD', 'AVGO', 'ARM', 'COIN', 'MSTR', 'CRWD',
+                // ASX momentum leaders
+                'XRO.AX', 'WTC.AX', 'PME.AX', 'REA.AX', 'CSL.AX', 'FMG.AX', 'BHP.AX'
+            ];
+            const moderateMomentum = [
+                // US large caps
+                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'CRM', 'NOW', 'PANW', 'ZS', 'ORCL', 'NFLX', 'ADBE',
+                // ASX blue chips
+                'CBA.AX', 'NAB.AX', 'WBC.AX', 'ANZ.AX', 'MQG.AX', 'WES.AX', 'WOW.AX', 'RIO.AX', 'NCM.AX',
+                // ETFs
+                'SPY', 'QQQ', 'IWM', 'XLK', 'SOXX', 'SMH'
+            ];
 
             return tickers.map(ticker => {
-                const isHighMom = highMomentum.includes(ticker);
-                const isModMom = moderateMomentum.includes(ticker);
+                // Check if ticker (with or without .AX) is in momentum lists
+                const tickerClean = ticker.replace('.AX', '');
+                const isHighMom = highMomentum.includes(ticker) || highMomentum.includes(tickerClean);
+                const isModMom = moderateMomentum.includes(ticker) || moderateMomentum.includes(tickerClean);
 
-                const ret_3m = isHighMom ? 0.35 + Math.random() * 0.45 :
-                    isModMom ? 0.15 + Math.random() * 0.35 :
-                        -0.10 + Math.random() * 0.40;
+                // Generate 3-month return with realistic distribution
+                // ~40% of stocks should have 30%+ 3M return
+                let ret_3m;
+                if (isHighMom) {
+                    ret_3m = 0.40 + Math.random() * 0.60;  // 40-100%
+                } else if (isModMom) {
+                    ret_3m = 0.20 + Math.random() * 0.40;  // 20-60%
+                } else {
+                    // General population: wide distribution
+                    // ~40% positive, ~30% above 30%
+                    ret_3m = -0.20 + Math.random() * 0.70;  // -20% to +50%
+                }
 
-                const ret_1m = ret_3m > 0.30 ? 0.08 + Math.random() * 0.20 :
-                    ret_3m > 0.15 ? 0.02 + Math.random() * 0.12 :
-                        -0.05 + Math.random() * 0.10;
+                // Generate 1-month return independently
+                // ~50% of stocks should have 10%+ 1M return
+                let ret_1m;
+                if (isHighMom) {
+                    ret_1m = 0.12 + Math.random() * 0.25;  // 12-37%
+                } else if (isModMom) {
+                    ret_1m = 0.05 + Math.random() * 0.20;  // 5-25%
+                } else {
+                    // General population: ~50% above 10%
+                    ret_1m = -0.10 + Math.random() * 0.35;  // -10% to +25%
+                }
+
+                // Generate price: ~90% should pass $1 filter
+                const price = isHighMom || isModMom
+                    ? 50 + Math.random() * 400  // $50-450
+                    : 0.5 + Math.random() * 300;  // $0.50-300
+
+                // Generate volume: ~60% should pass $20M filter
+                const dollarVolume = isHighMom
+                    ? (50 + Math.random() * 500) * 1e6   // $50M-550M
+                    : isModMom
+                        ? (30 + Math.random() * 200) * 1e6  // $30M-230M
+                        : (5 + Math.random() * 100) * 1e6;  // $5M-105M (some below $20M)
+
+                // Generate % from high: ~60% should be within 15% of high
+                const pctFromHigh = isHighMom
+                    ? 0.90 + Math.random() * 0.10  // 90-100%
+                    : isModMom
+                        ? 0.80 + Math.random() * 0.20  // 80-100%
+                        : 0.65 + Math.random() * 0.35;  // 65-100%
+
+                // RS vs SPY: tied to absolute return minus market
+                const rsVsSpy = ret_3m - 0.05;  // Assume SPY +5% baseline
 
                 return {
                     ticker: ticker,
-                    price: 50 + Math.random() * 450,
-                    dollarVolume: (10 + Math.random() * 200) * 1000000,
+                    price: price,
+                    dollarVolume: dollarVolume,
                     ret_3m: ret_3m,
                     ret_1m: ret_1m,
-                    rsVsSpy: ret_3m - 0.08, // SPY baseline
-                    pctFromHigh: isHighMom ? 0.88 + Math.random() * 0.12 :
-                        isModMom ? 0.75 + Math.random() * 0.25 :
-                            0.60 + Math.random() * 0.40,
-                    atrContraction: isHighMom ? Math.random() > 0.3 :
-                        isModMom ? Math.random() > 0.5 :
-                            Math.random() > 0.7,
-                    perfectAlignment: isHighMom ? Math.random() > 0.2 :
-                        isModMom ? Math.random() > 0.4 :
-                            Math.random() > 0.7,
-                    aboveSma200: isHighMom || isModMom ? true : Math.random() > 0.3
+                    rsVsSpy: rsVsSpy,
+                    pctFromHigh: pctFromHigh,
+                    atrContraction: Math.random() > 0.4,  // 60% pass
+                    perfectAlignment: Math.random() > 0.5,  // 50% pass
+                    aboveSma200: ret_3m > 0 ? true : Math.random() > 0.4  // Positive stocks mostly above SMA200
                 };
             });
         }
@@ -877,7 +1110,7 @@
             if (results.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="no-results">
+                        <td colspan="9" class="no-results">
                             <div class="no-results-icon">🔍</div>
                             <div>No stocks passed all filters. Run: <code>python -m strategy.quallamaggie_scanner</code></div>
                         </td>
@@ -886,10 +1119,20 @@
                 return;
             }
 
+            // Format volume for display (e.g., 25M, 150M)
+            function formatVolume(vol) {
+                if (!vol || vol === 0) return '--';
+                if (vol >= 1e9) return (vol / 1e9).toFixed(1) + 'B';
+                if (vol >= 1e6) return (vol / 1e6).toFixed(1) + 'M';
+                if (vol >= 1e3) return (vol / 1e3).toFixed(1) + 'K';
+                return vol.toFixed(0);
+            }
+
             tbody.innerHTML = results.map(stock => `
                 <tr>
                     <td class="ticker-cell">${stock.ticker}</td>
                     <td>$${stock.price.toFixed(2)}</td>
+                    <td>${formatVolume(stock.dollarVolume || stock.volume20d)}</td>
                     <td class="${stock.ret_3m >= 0.30 ? 'positive' : 'neutral'}">${(stock.ret_3m * 100).toFixed(1)}%</td>
                     <td class="${stock.ret_1m >= 0.10 ? 'positive' : 'neutral'}">${(stock.ret_1m * 100).toFixed(1)}%</td>
                     <td class="${stock.rs_vs_spy > 0 ? 'positive' : 'negative'}">${stock.rs_vs_spy > 0 ? '+' : ''}${(stock.rs_vs_spy * 100).toFixed(1)}%</td>
@@ -908,7 +1151,7 @@
                 currentSort.asc = !currentSort.asc;
             } else {
                 currentSort.column = columnIndex;
-                currentSort.asc = false;
+                currentSort.asc = false; // Default descending for new column
             }
 
             // Update header classes
@@ -919,21 +1162,44 @@
                 }
             });
 
-            // Sort data
-            const sortKeys = ['ticker', 'price', 'ret_3m', 'ret_1m', 'rsVsSpy', 'pctFromHigh', 'atrContraction', 'ret_3m'];
+            // Column index to data key mapping (matches current table structure)
+            // 0: Ticker, 1: Price, 2: Vol 20D, 3: 3M Return, 4: 1M Return, 
+            // 5: RS vs SPY, 6: % from High, 7: ATR Contraction, 8: Signal
+            const sortKeys = [
+                'ticker',           // 0
+                'price',            // 1
+                'dollarVolume',     // 2
+                'ret_3m',           // 3
+                'ret_1m',           // 4
+                'rs_vs_spy',        // 5
+                'pct_from_high',    // 6
+                'atr_contraction',  // 7
+                'signal'            // 8
+            ];
             const key = sortKeys[columnIndex];
+
+            if (!key) return;
 
             scanResults.sort((a, b) => {
                 let valA = a[key];
                 let valB = b[key];
 
+                // Handle null/undefined
+                if (valA === undefined || valA === null) valA = currentSort.asc ? Infinity : -Infinity;
+                if (valB === undefined || valB === null) valB = currentSort.asc ? Infinity : -Infinity;
+
+                // String comparison (for ticker and signal)
                 if (typeof valA === 'string') {
                     return currentSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
                 }
+
+                // Boolean comparison (for atr_contraction)
                 if (typeof valA === 'boolean') {
                     valA = valA ? 1 : 0;
                     valB = valB ? 1 : 0;
                 }
+
+                // Numeric comparison
                 return currentSort.asc ? valA - valB : valB - valA;
             });
 

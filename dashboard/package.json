@@ -10,11 +10,12 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "@tanstack/react-table": "^8.21.3",
     "axios": "^1.6.0",
     "dayjs": "^1.11.10",
     "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "recharts": "^2.10.0"
   },
   "devDependencies": {
