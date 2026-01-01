@@ -35,6 +35,26 @@ export interface StrategyMetrics {
     regime_performance: RegimePerformance[];
     equity_curve: EquityPoint[];
     drawdown_series: DrawdownPoint[];
+    // Forensic Data
+    ic_decay?: ICDecay[];
+    attribution?: Attribution;
+    execution_surface?: ExecutionData[];
+}
+
+export interface ICDecay {
+    horizon: number; // e.g., 1, 2, 5, 10, 20 days
+    ic: number;      // Information Coefficient (correlation)
+}
+
+export interface Attribution {
+    market_beta: number;
+    style_factors: number;
+    idiosyncratic_alpha: number;
+}
+
+export interface ExecutionData {
+    vix: number;
+    slippage_bps: number;
 }
 
 export interface RegimePerformance {

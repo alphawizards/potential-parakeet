@@ -4,9 +4,9 @@
  * Displays trade history in a sortable, filterable table.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Trade, TradeFilters } from '../../types/trade';
+import type { Trade } from '../../types/trade';
 import {
   formatCurrency,
   formatPercent,

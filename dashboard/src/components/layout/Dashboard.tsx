@@ -14,7 +14,9 @@ import {
   BarChart2,
   Clock,
   Award,
+  ShieldCheck,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { MetricCard, MetricGrid } from '../metrics/MetricCard';
 import { TradeTable } from '../trades/TradeTable';
 import { TradeFilters } from '../trades/TradeFilters';
@@ -35,7 +37,7 @@ export const Dashboard: React.FC = () => {
     goToPage,
   } = useTrades(1, 50);
 
-  const { summary, loading: summaryLoading } = useDashboard(100000);
+  const { summary } = useDashboard(100000);
 
   const handleFilterChange = (newFilters: TradeFiltersType) => {
     updateFilters(newFilters);
@@ -66,6 +68,13 @@ export const Dashboard: React.FC = () => {
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <Link
+                to="/truth-engine"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span className="font-medium">Truth Engine</span>
+              </Link>
               <div className="text-right">
                 <p className="text-sm text-gray-500">Last Updated</p>
                 <p className="text-sm font-medium text-gray-900">
