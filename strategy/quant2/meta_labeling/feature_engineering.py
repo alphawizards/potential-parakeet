@@ -5,10 +5,11 @@ Extract features at each Quallamaggie signal for ML-based filtering.
 
 Features extracted:
 1. Volatility (VIX, ATR)
-2. Volume trends (RVOL)
+2. Volume trends (RVOL, Volume Volatility)
 3. Sector momentum
 4. Price distance from moving averages
 5. Bid-ask proxy (intraday range)
+6. Fractional Differentiation (FFD)
 """
 
 import pandas as pd
@@ -16,6 +17,7 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import warnings
+from strategy.quant2.features import frac_diff_ffd
 
 warnings.filterwarnings('ignore')
 
@@ -40,6 +42,7 @@ class FeatureEngineer:
     - Volume: Relative volume and trends
     - Momentum: Multi-timeframe momentum indicators
     - Technical: Distance from MAs, ATR
+    - Stationarity: FFD features
     
     Attributes:
         vix_ticker: Ticker for VIX data (default: ^VIX)
@@ -206,14 +209,20 @@ class FeatureEngineer:
             aligned_vix = vix.reindex(ohlcv.index).ffill()
             features['vix'] = aligned_vix
             features['vix_sma20'] = aligned_vix.rolling(20).mean()
-            features['vix_percentile'] = aligned_vix.rolling(252).apply(
-                lambda x: (x.iloc[-1] > x).sum() / len(x) if len(x) > 0 else 0.5
-            )
+            # Optimized VIX Percentile using vectorized ranking
+            features['vix_percentile'] = aligned_vix.rolling(252).rank(pct=True)
+            # Fill NaN for initial window
+            features['vix_percentile'] = features['vix_percentile'].fillna(0.5)
         
         # 2. Volume features
         if volume is not None:
             features['rvol'] = self.calculate_rvol(volume)
             features['volume_trend'] = volume.rolling(5).mean() / volume.rolling(20).mean()
+
+            # Volume Volatility (Coefficient of Variation)
+            vol_mean = volume.rolling(20).mean()
+            vol_std = volume.rolling(20).std()
+            features['volume_cv'] = vol_std / vol_mean
         
         # 3. Momentum features
         momentum_df = self.calculate_momentum(close)
@@ -239,6 +248,20 @@ class FeatureEngineer:
             for col in sector_returns.columns:
                 aligned = sector_returns[col].reindex(ohlcv.index).ffill()
                 features[f'sector_{col}_mom'] = aligned.rolling(21).sum()
+
+        # 9. Fractional Differentiation (FFD)
+        # Apply to Close prices
+        # Log-transform first to stabilize variance
+        log_close = np.log(close)
+        ffd_close = frac_diff_ffd(log_close.to_frame(), d=0.4).iloc[:, 0]
+        features['ffd_close'] = ffd_close
+
+        if volume is not None:
+            # Apply to Volume (log transformed)
+            # Adding 1 to avoid log(0)
+            log_volume = np.log(volume + 1)
+            ffd_volume = frac_diff_ffd(log_volume.to_frame(), d=0.4).iloc[:, 0]
+            features['ffd_volume'] = ffd_volume
         
         # Drop rows with NaN
         features = features.dropna()

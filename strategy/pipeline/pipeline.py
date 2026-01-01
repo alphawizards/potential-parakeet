@@ -16,6 +16,12 @@ from .data_layer import DataManager, DataConfig, get_data_manager
 from .signal_layer import SignalManager, BaseStrategy, SignalResult
 from .allocation_layer import AllocationManager, AllocationConfig, AllocationResult
 from .reporting_layer import ReportingManager, PerformanceMetrics, StrategyReport
+try:
+    from strategy.quant2.meta_labeling.orchestrator import MetaStrategyOrchestrator, MetaStrategyConfig
+    HAS_META = True
+except ImportError:
+    HAS_META = False
+    print("Warning: Meta-Labeling components not found.")
 
 
 @dataclass
@@ -37,6 +43,10 @@ class PipelineConfig:
     
     # Output
     output_dir: str = "reports"
+
+    # Meta-Labeling
+    use_meta_labeling: bool = False
+    meta_model_path: str = "models/meta_model.pkl"
     
     def __post_init__(self):
         if self.end_date is None:
@@ -85,6 +95,13 @@ class TradingPipeline:
         self.allocation_manager = AllocationManager()
         self.reporting_manager = ReportingManager()
         
+        # Initialize Meta-Strategy Orchestrator
+        self.meta_orchestrator = None
+        if self.config.use_meta_labeling and HAS_META:
+            self.meta_orchestrator = MetaStrategyOrchestrator(
+                MetaStrategyConfig(model_path=self.config.meta_model_path)
+            )
+
         # Cache
         self._prices: Optional[pd.DataFrame] = None
         self._results: Dict[str, PipelineResult] = {}
@@ -130,6 +147,24 @@ class TradingPipeline:
             strategy_name, prices
         )
         
+        # 2b. META-LABELING FILTER (Optional)
+        if self.config.use_meta_labeling and self.meta_orchestrator:
+            print(f"\n🧠 Layer 2b: Applying Meta-Labeling Filter...")
+            # Note: We need VIX and Volume for full features.
+            # Currently Pipeline mostly handles Close prices.
+            # This is a limitation we accept for now or need to fetch Volume/VIX.
+
+            # Fetch Volume if not available (Basic attempt)
+            # Fetch VIX (Basic attempt)
+            # For now, we pass None and let Orchestrator handle missing data gracefully or skip features
+
+            # If training is needed, we could run it here, but typically training is separate.
+            # Here we assume inference mode.
+
+            signal_result = self.meta_orchestrator.apply_filtering(
+                signal_result, prices
+            )
+
         # 3. ALLOCATION LAYER
         print(f"\n⚖️ Layer 3: Optimizing Allocation ({optimization_method})...")
         if optimization_method == "HRP":
@@ -149,7 +184,10 @@ class TradingPipeline:
             returns, signal_result.signals, allocation_result.weights
         )
         
-        final_value = self.config.initial_capital * equity_curve.iloc[-1]
+        if equity_curve.empty:
+            final_value = self.config.initial_capital
+        else:
+            final_value = self.config.initial_capital * equity_curve.iloc[-1]
         
         # 5. REPORTING LAYER
         print("\n📋 Layer 4: Generating Reports...")
@@ -224,7 +262,10 @@ class TradingPipeline:
         returns = returns[common_assets]
         
         if len(common_assets) == 0:
-            return pd.Series(dtype=float), pd.Series(dtype=float)
+            # If no assets selected, return flat equity curve
+            zero_returns = pd.Series(0.0, index=returns.index)
+            flat_equity = pd.Series(1.0, index=returns.index)
+            return zero_returns, flat_equity
         
         # Portfolio returns (simple weighted average)
         portfolio_returns = (returns * weights).sum(axis=1)
