@@ -210,8 +210,8 @@ class FeatureEngineer:
             features['vix'] = aligned_vix
             features['vix_sma20'] = aligned_vix.rolling(20).mean()
             # Optimized VIX Percentile using vectorized ranking
-            features['vix_percentile'] = aligned_vix.rolling(252).rank(pct=True)
-            # Fill NaN for initial window
+            # Use min_periods=1 to get values earlier
+            features['vix_percentile'] = aligned_vix.rolling(252, min_periods=1).rank(pct=True)
             features['vix_percentile'] = features['vix_percentile'].fillna(0.5)
         
         # 2. Volume features
@@ -300,6 +300,15 @@ class FeatureEngineer:
         
         # Filter to signal dates
         valid_dates = [d for d in signal_dates if d in full_features.features.index]
+
+        # Handle empty features (e.g., if FFD failed or dropped all data)
+        if full_features.features.empty:
+             return FeatureSet(
+                features=pd.DataFrame(columns=full_features.feature_names),
+                feature_names=full_features.feature_names,
+                metadata={'n_signals': 0, 'n_features': len(full_features.feature_names)}
+            )
+
         signal_features = full_features.features.loc[valid_dates]
         
         return FeatureSet(

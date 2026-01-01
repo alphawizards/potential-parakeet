@@ -16,12 +16,15 @@ from .data_layer import DataManager, DataConfig, get_data_manager
 from .signal_layer import SignalManager, BaseStrategy, SignalResult
 from .allocation_layer import AllocationManager, AllocationConfig, AllocationResult
 from .reporting_layer import ReportingManager, PerformanceMetrics, StrategyReport
+
+# Delay import to avoid circular dependency
+HAS_META = False
 try:
-    from strategy.quant2.meta_labeling.orchestrator import MetaStrategyOrchestrator, MetaStrategyConfig
+    # Check if module exists without importing it at top level
+    import strategy.quant2.meta_labeling.orchestrator
     HAS_META = True
 except ImportError:
-    HAS_META = False
-    print("Warning: Meta-Labeling components not found.")
+    pass
 
 
 @dataclass
@@ -98,9 +101,13 @@ class TradingPipeline:
         # Initialize Meta-Strategy Orchestrator
         self.meta_orchestrator = None
         if self.config.use_meta_labeling and HAS_META:
-            self.meta_orchestrator = MetaStrategyOrchestrator(
-                MetaStrategyConfig(model_path=self.config.meta_model_path)
-            )
+            try:
+                from strategy.quant2.meta_labeling.orchestrator import MetaStrategyOrchestrator, MetaStrategyConfig
+                self.meta_orchestrator = MetaStrategyOrchestrator(
+                    MetaStrategyConfig(model_path=self.config.meta_model_path)
+                )
+            except ImportError as e:
+                print(f"Warning: Failed to import MetaStrategyOrchestrator: {e}")
 
         # Cache
         self._prices: Optional[pd.DataFrame] = None

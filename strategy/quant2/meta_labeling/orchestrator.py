@@ -194,7 +194,16 @@ class MetaStrategyOrchestrator:
 
         if not X_list:
             print("   ⚠️ No features extracted (check data history length).")
-            return None
+            # Return empty training result instead of None to prevent attribute errors
+            return TrainingResult(
+                accuracy=0.0,
+                precision=0.0,
+                recall=0.0,
+                auc=0.0,
+                feature_importance=pd.Series(),
+                cv_scores=np.array([]),
+                metadata={'error': 'No features extracted'}
+            )
 
         X = pd.DataFrame(X_list)
         y = pd.Series(y_list)
