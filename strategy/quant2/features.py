@@ -82,15 +82,41 @@ def frac_diff_ffd(
         series_f = series[[name]].ffill().dropna()
         df_ = pd.Series(dtype=float)
         
-        for iloc1 in range(width, series_f.shape[0]):
-            loc0 = series_f.index[iloc1 - width]
-            loc1 = series_f.index[iloc1]
+        # Vectorized implementation for speed using rolling
+        # Get values as numpy array
+        vals = series_f.values.flatten()
+
+        # We need to apply the weights dot product on a rolling window
+        # w is (width+1, 1), we need to reverse it for convolution if using convolve,
+        # but here we can just use dot product logic carefully.
+        # Actually, rolling apply is slow. The fastest way is stride_tricks or just a loop over the window size
+        # given that window size is small (width is usually < 1000).
+
+        # However, for pure vectorization:
+        # Create a rolling window view
+        from numpy.lib.stride_tricks import sliding_window_view
+
+        if len(vals) > width:
+            windows = sliding_window_view(vals, window_shape=len(w))
+            # windows shape is (n_windows, window_size) where window_size = len(w)
+
+            # The weights w are typically applied such that w[0]*x[t] + w[1]*x[t-1]...
+            # In our implementation get_weights_ffd returns weights from oldest to newest (w[-1] is newest)
+            # So we can dot product directly if windows are also chronological
             
-            if not np.isfinite(series.loc[loc1, name]):
-                continue  # Skip NaN values
-                
-            # Dot product of weights and values
-            df_[loc1] = np.dot(w.T, series_f.loc[loc0:loc1].values)[0, 0]
+            # w shape: (width+1, 1) -> flatten to (width+1,)
+            w_flat = w.flatten()
+
+            # Result of dot product
+            res = np.dot(windows, w_flat)
+
+            # Construct Series aligned with timestamps
+            # The first result corresponds to index at 'width'
+            res_index = series_f.index[len(w)-1:]
+            df_ = pd.Series(res, index=res_index)
+
+        else:
+             df_ = pd.Series(dtype=float)
         
         df[name] = df_.copy(deep=True)
     

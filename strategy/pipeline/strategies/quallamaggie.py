@@ -99,84 +99,99 @@ class QuallamaggieStrategy(BaseStrategy):
                 metadata={'error': 'Insufficient data'}
             )
         
-        # Calculate components
+        # 1. Momentum Calculation
         momentum = self._calculate_momentum(prices, lookback)
+
+        # 2. Moving Averages
         ema_10 = prices.ewm(span=self.config.ema_10).mean()
         ema_20 = prices.ewm(span=self.config.ema_20).mean()
         sma_50 = prices.rolling(self.config.sma_50).mean()
-        sma_200 = prices.rolling(self.config.sma_200).mean()
+        # sma_200 = prices.rolling(self.config.sma_200).mean() # Not used in signal logic currently
         
-        # RS Line (relative to benchmark)
+        # 3. RS Line
         rs_line = self._calculate_rs_line(prices)
         
-        # Volume analysis
+        # 4. Volume Analysis
         if volume is not None:
             avg_volume = volume.rolling(50).mean()
             relative_volume = volume / avg_volume
+            vol_confirmed_mask = relative_volume >= self.config.breakout_volume_mult
         else:
-            relative_volume = None
-        
-        # Generate signals for each day
-        for i in range(lookback, len(prices)):
-            date = prices.index[i]
+            vol_confirmed_mask = pd.DataFrame(True, index=prices.index, columns=prices.columns)
             
-            # Get momentum ranking for this date
-            mom_row = momentum.iloc[i] if i < len(momentum) else None
-            if mom_row is None or mom_row.isna().all():
-                continue
-            
-            # Filter for top momentum stocks
-            threshold = mom_row.quantile(1 - self.config.top_momentum_pct)
-            top_momentum_stocks = mom_row[mom_row >= threshold].index
-            
-            for ticker in top_momentum_stocks:
-                if ticker not in prices.columns:
-                    continue
-                
-                # Check trend alignment
-                price = prices.loc[date, ticker]
-                if pd.isna(price):
-                    continue
-                
-                _ema10 = ema_10.loc[date, ticker] if ticker in ema_10.columns else np.nan
-                _ema20 = ema_20.loc[date, ticker] if ticker in ema_20.columns else np.nan
-                _sma50 = sma_50.loc[date, ticker] if ticker in sma_50.columns else np.nan
-                _sma200 = sma_200.loc[date, ticker] if ticker in sma_200.columns else np.nan
-                
-                # Trend filter: price above key MAs
-                in_uptrend = (
-                    price > _ema10 and 
-                    price > _ema20 and 
-                    _ema10 > _ema20 and
-                    (pd.isna(_sma50) or price > _sma50)
-                )
-                
-                if not in_uptrend:
-                    continue
-                
-                # Check RS Line (near highs)
-                rs_good = self._check_rs_strength(rs_line, date, ticker)
-                
-                # Check for consolidation pattern
-                recent_prices = prices[ticker].iloc[max(0, i-20):i+1]
-                in_consolidation = self._detect_consolidation(recent_prices)
-                
-                # Volume confirmation
-                vol_confirmed = True
-                if relative_volume is not None:
-                    rel_vol = relative_volume.loc[date, ticker] if ticker in relative_volume.columns else 1.0
-                    vol_confirmed = rel_vol >= self.config.breakout_volume_mult
-                
-                # Generate signal
-                if in_uptrend and (in_consolidation or rs_good):
-                    signal_strength = self._calculate_signal_strength(
-                        momentum=mom_row[ticker] if ticker in mom_row.index else 0,
-                        rs_good=rs_good,
-                        vol_confirmed=vol_confirmed
-                    )
-                    
-                    signals.loc[date, ticker] = 1
-                    strength.loc[date, ticker] = signal_strength
+        # --- Vectorized Logic ---
+
+        # A. Top Momentum Mask (per day)
+        # Use rank(pct=True) to get percentiles
+        # Handle all-NaN rows by keeping them as NaN (rank propagates NaNs)
+        mom_rank = momentum.rank(axis=1, pct=True)
+        top_momentum_mask = mom_rank >= (1 - self.config.top_momentum_pct)
+
+        # B. Trend Mask
+        # price > ema10 and price > ema20 and ema10 > ema20 and (isna(sma50) or price > sma50)
+        trend_mask = (
+            (prices > ema_10) &
+            (prices > ema_20) &
+            (ema_10 > ema_20) &
+            (sma_50.isna() | (prices > sma_50))
+        )
+
+        # C. Consolidation Mask
+        # Rolling max/min over last 21 days (approx 1 month trading days)
+        # Loop used max(0, i-20):i+1, which is window size 21
+        roll_window = 21
+        recent_max = prices.rolling(roll_window, min_periods=self.config.consolidation_min_days).max()
+        recent_min = prices.rolling(roll_window, min_periods=self.config.consolidation_min_days).min()
+
+        # Avoid division by zero
+        price_range_pct = (recent_max - recent_min) / recent_min.replace(0, np.nan)
+        consolidation_mask = price_range_pct <= self.config.consolidation_max_range
+
+        # D. RS Strength Mask
+        # RS line near 50-day high (within 5%)
+        # Loop logic: if idx < 50 return True (insufficient data assumed good)
+        rs_50d_high = rs_line.rolling(51, min_periods=1).max()
+        rs_mask = rs_line >= (rs_50d_high * 0.95)
+
+        # Emulate "if idx < 50: return True"
+        # We set the first 50 rows to True for rs_mask
+        rs_mask.iloc[:50] = True
+
+        # Combine Signals
+        # Signal = Top_Momentum AND Trend AND (Consolidation OR RS_Good)
+        final_signal_mask = top_momentum_mask & trend_mask & (consolidation_mask | rs_mask)
+
+        # Ensure we don't signal before lookback
+        final_signal_mask.iloc[:lookback] = False
+
+        # Set signals
+        signals = final_signal_mask.astype(int)
+
+        # --- Strength Calculation (Vectorized) ---
+        base_strength = 0.5
+
+        # Momentum Bonus
+        # if momentum > 50: +0.2
+        # elif momentum > 25: +0.1
+        mom_bonus = np.select(
+            [momentum > 50, momentum > 25],
+            [0.2, 0.1],
+            default=0.0
+        )
+
+        # RS Bonus (+0.15)
+        rs_bonus = np.where(rs_mask, 0.15, 0.0)
+
+        # Volume Bonus (+0.15)
+        vol_bonus = np.where(vol_confirmed_mask, 0.15, 0.0)
+
+        # Total Strength
+        total_strength = base_strength + mom_bonus + rs_bonus + vol_bonus
+
+        # Clip to 1.0 and apply only to valid signals
+        # (Though strength is calculated for all, we usually only care where signal=1)
+        strength = pd.DataFrame(total_strength, index=prices.index, columns=prices.columns).clip(upper=1.0)
+        strength = strength * final_signal_mask # Zero out non-signal strength
         
         return SignalResult(
             strategy_name=self.name,
@@ -217,7 +232,9 @@ class QuallamaggieStrategy(BaseStrategy):
         date,
         ticker: str
     ) -> bool:
-        """Check if RS Line is near new highs."""
+        """Check if RS Line is near new highs (Legacy helper, kept for interface compat if needed)."""
+        # Note: This is now vectorized inside generate_signals and not used there.
+        # Keeping it for potential external usage or testing.
         if ticker not in rs_line.columns:
             return False
         
@@ -234,7 +251,8 @@ class QuallamaggieStrategy(BaseStrategy):
         return current_rs >= rs_50d_high * 0.95
     
     def _detect_consolidation(self, prices: pd.Series) -> bool:
-        """Detect if stock is in consolidation pattern."""
+        """Detect if stock is in consolidation pattern (Legacy helper)."""
+        # Note: This is now vectorized inside generate_signals and not used there.
         if len(prices) < self.config.consolidation_min_days:
             return False
         
@@ -247,7 +265,7 @@ class QuallamaggieStrategy(BaseStrategy):
         rs_good: bool,
         vol_confirmed: bool
     ) -> float:
-        """Calculate overall signal strength (0-1)."""
+        """Calculate overall signal strength (Legacy helper)."""
         base_strength = 0.5
         
         # Momentum contribution
