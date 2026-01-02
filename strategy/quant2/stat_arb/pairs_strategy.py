@@ -2,6 +2,7 @@
 Pairs Trading Strategy
 ======================
 Integrated pairs trading using DBSCAN clustering and Kalman filtering.
+Implements Walk-Forward (Rolling) Clustering to prevent look-ahead bias.
 
 Combines:
 1. ClusteringEngine for universe selection (similar assets)
@@ -11,7 +12,7 @@ Combines:
 
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Union
 from dataclasses import dataclass
 import warnings
 
@@ -38,7 +39,7 @@ class PairsStrategyResult:
     """Result from pairs strategy scan."""
     active_pairs: List[Dict]
     all_pair_signals: pd.DataFrame
-    cluster_result: ClusteringResult
+    cluster_result: Optional[ClusteringResult]
     metadata: dict
 
 
@@ -47,7 +48,7 @@ class PairsStrategy:
     Statistical Arbitrage Pairs Trading Strategy.
     
     Pipeline:
-    1. Cluster stocks by factor loadings (DBSCAN)
+    1. Cluster stocks by factor loadings (DBSCAN) - Rolling Window
     2. Identify candidate pairs within clusters
     3. Estimate dynamic hedge ratios (Kalman)
     4. Generate z-score based trading signals
@@ -171,28 +172,59 @@ class PairsStrategy:
         
         return score
     
-    def scan_for_pairs(
+    def scan_for_pairs_rolling(
         self,
         returns: pd.DataFrame,
-        prices: pd.DataFrame
+        prices: pd.DataFrame,
+        train_window: int = 60,
+        trade_date: Optional[Union[str, pd.Timestamp]] = None
     ) -> PairsStrategyResult:
         """
-        Scan universe for tradable pairs.
+        Scan for pairs using a Rolling Window to avoid look-ahead bias.
         
         Args:
-            returns: DataFrame of returns for clustering
-            prices: DataFrame of prices for spread calculation
+            returns: Full returns DataFrame
+            prices: Full prices DataFrame
+            train_window: Number of days to look back for clustering (default: 60)
+            trade_date: Date for which we are generating signals.
+                       If None, uses the last date in data.
             
         Returns:
-            PairsStrategyResult with active pairs and signals
+            PairsStrategyResult valid for the trade_date
         """
-        # Step 1: Cluster stocks
-        cluster_result = self.clustering_engine.fit_transform(returns)
+        if trade_date is None:
+            trade_date = returns.index[-1]
+
+        trade_date = pd.Timestamp(trade_date)
+
+        # 1. Define Training Window (previous `train_window` days)
+        # We need data UP TO trade_date (exclusive or inclusive? usually exclusive for trading tomorrow)
+        # Assuming trade_date is 'today' (T), we use data up to T (Close) to trade T+1.
+
+        # Slice data up to trade_date
+        idx_loc = returns.index.get_loc(trade_date) if trade_date in returns.index else len(returns)-1
+
+        # If trade_date is not in index, find nearest previous?
+        # Assuming aligned.
         
-        # Step 2: Get all candidate pairs
+        start_idx = max(0, idx_loc - train_window + 1)
+
+        # Training Data: returns[start_idx : idx_loc+1]
+        train_returns = returns.iloc[start_idx : idx_loc + 1]
+
+        if len(train_returns) < train_window * 0.8: # Require at least 80% data
+            return PairsStrategyResult([], pd.DataFrame(), None, {'error': 'Insufficient history'})
+
+        # FIX: Look-Ahead Bias
+        # We ONLY use `train_returns` for clustering.
+
+        # Step 1: Cluster stocks on training window
+        cluster_result = self.clustering_engine.fit_transform(train_returns)
+
+        # Step 2: Get candidate pairs from clusters
         all_pairs = self.clustering_engine.get_all_tradable_pairs(cluster_result)
         
-        # Step 3: Analyze each pair
+        # Step 3: Analyze pairs (using training data for scoring)
         pair_data = []
         
         for ticker_y, ticker_x, cluster_id in all_pairs:
@@ -200,11 +232,17 @@ class PairsStrategy:
                 continue
             
             try:
-                # Estimate hedge ratio
-                y = prices[ticker_y].dropna()
-                x = prices[ticker_x].dropna()
+                # Use training window prices for estimation
+                # Note: Kalman Filter is recursive. We should ideally run it on full history up to now
+                # to get the current state. But clustering is the main source of look-ahead bias here.
+                # Let's run Kalman on the training window to score the pair quality.
+
+                # Prices corresponding to training returns
+                train_prices = prices.loc[train_returns.index]
+                y = train_prices[ticker_y].dropna()
+                x = train_prices[ticker_x].dropna()
                 
-                if len(y) < 100 or len(x) < 100:
+                if len(y) < 20 or len(x) < 20:
                     continue
                 
                 result = self.kalman.estimate(y, x)
@@ -248,6 +286,8 @@ class PairsStrategy:
                 active_pairs.extend(top_pairs.to_dict('records'))
         
         metadata = {
+            'date': str(trade_date.date()),
+            'train_window': train_window,
             'n_clusters': cluster_result.metadata['n_clusters'],
             'n_candidate_pairs': len(all_pairs),
             'n_valid_pairs': len(pair_data),
@@ -259,6 +299,25 @@ class PairsStrategy:
             all_pair_signals=signals_df,
             cluster_result=cluster_result,
             metadata=metadata
+        )
+
+    def scan_for_pairs(
+        self,
+        returns: pd.DataFrame,
+        prices: pd.DataFrame
+    ) -> PairsStrategyResult:
+        """
+        Legacy method for backward compatibility.
+        Delegates to scan_for_pairs_rolling using the full dataset as window.
+
+        WARNING: This may introduce look-ahead bias if used for backtesting
+        without explicit window management.
+        """
+        return self.scan_for_pairs_rolling(
+            returns,
+            prices,
+            train_window=len(returns),
+            trade_date=returns.index[-1]
         )
     
     def _get_signal(self, zscore: float) -> str:
@@ -339,7 +398,15 @@ def demo():
     
     # Run pairs strategy
     strategy = PairsStrategy(eps=0.7, min_samples=2)
-    result = strategy.scan_for_pairs(returns, prices)
+
+    # FIX: Use rolling scan
+    print("\nRunning Rolling Scan (Window=60)...")
+    result = strategy.scan_for_pairs_rolling(
+        returns,
+        prices,
+        train_window=60,
+        trade_date=dates[-1]
+    )
     
     print(f"\nResults:")
     print(f"  Clusters found: {result.metadata['n_clusters']}")

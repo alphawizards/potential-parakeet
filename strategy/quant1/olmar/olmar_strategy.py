@@ -84,6 +84,7 @@ class OLMARStrategy:
     - Mean reversion based on moving average prediction
     - Cost-aware turnover constraints
     - Simplex-projected weights (sum to 1, all >= 0)
+    - Risk Circuit Breakers (Stop Loss & Volatility Guard)
     
     Example:
         >>> config = OLMARConfig(window=5, epsilon=10, rebalance_freq='weekly')
@@ -136,14 +137,42 @@ class OLMARStrategy:
             epsilon=self.config.epsilon
         )
         
+        # Apply Risk Circuit Breakers
+        # 1. Stop Loss: If price / rolling_max(252) < 0.85 -> weight = 0.0
+        rolling_max = prices.rolling(window=252, min_periods=1).max()
+        drawdown_factor = prices / rolling_max
+        stop_loss_mask = drawdown_factor < 0.85
+
+        # 2. Volatility Guard: If rolling_std(returns, 20) > 0.05 -> weight *= 0.5
+        returns = prices.pct_change()
+        volatility = returns.rolling(window=20, min_periods=1).std()
+        high_vol_mask = volatility > 0.05
+
+        # Apply masks to raw weights
+        # Note: We must be careful not to break sum=1 property if we zero out weights.
+        # However, OLMAR typically generates a portfolio. If we zero out a stock,
+        # we are effectively moving that capital to cash (implied) or we should re-normalize.
+        # The prompt says: "force weight to 0.0". If we do this, the sum might be < 1.
+        # This implies holding cash for that portion.
+
+        adjusted_weights = raw_weights.copy()
+
+        # Apply Stop Loss (Hard Exit)
+        adjusted_weights[stop_loss_mask] = 0.0
+
+        # Apply Volatility Guard (De-leverage)
+        # We multiply by 0.5 where vol is high
+        # We use numpy where for efficiency
+        adjusted_weights = adjusted_weights.mask(high_vol_mask, adjusted_weights * 0.5)
+
         # Apply rebalancing frequency mask
         rebalance_mask = self._get_rebalance_mask(prices.index)
         
-        # Apply turnover constraints if requested
+        # Apply turnover constraints if requested (using adjusted weights)
         if apply_cost_constraints:
-            weights = self._apply_constraints(raw_weights, rebalance_mask)
+            weights = self._apply_constraints(adjusted_weights, rebalance_mask)
         else:
-            weights = self._apply_rebalance_mask(raw_weights, rebalance_mask)
+            weights = self._apply_rebalance_mask(adjusted_weights, rebalance_mask)
         
         # Calculate turnover statistics
         turnover_stats = get_turnover_stats(weights)

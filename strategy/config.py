@@ -55,6 +55,10 @@ def get_asx_tickers() -> List[str]:
     """Get list of ASX tickers."""
     return []
 
+def get_nasdaq_100_tickers() -> List[str]:
+    """Get list of Nasdaq 100 tickers."""
+    return ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "PEP", "AVGO", "CSCO"]
+
 def get_fx_cost(currency: str) -> float:
     """Get FX cost for currency."""
     if currency == 'AUD':
