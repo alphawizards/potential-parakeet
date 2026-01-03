@@ -163,7 +163,7 @@ print_header "Step 1: Pre-flight Checks"
 
 if [ ! -d "venv" ]; then
     print_error "Virtual environment not found. Creating..."
-    python3.11 -m venv venv
+    python3 -m venv venv
 fi
 
 if [ ! -d "dashboard/dist" ]; then
