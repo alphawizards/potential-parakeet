@@ -1,0 +1,295 @@
+/**
+ * Lambda Functions Configuration
+ * ===============================
+ * Serverless compute for API endpoints and scheduled tasks.
+ *
+ * Functions:
+ * 1. Ingest - Daily data ingestion (triggered by EventBridge)
+ * 2. Trades API - Trading operations
+ * 3. Data API - Market data queries
+ * 4. Strategies API - Strategy management
+ * 5. Scanner API - Stock scanning
+ */
+
+# ============================================================================
+# Local Variables
+# ============================================================================
+
+locals {
+  region     = var.aws_region
+  account_id = data.aws_caller_identity.current.account_id
+
+  common_tags = merge(
+    {
+      Project     = "potential-parakeet"
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    },
+    var.additional_tags
+  )
+
+  # Common Lambda environment variables
+  lambda_environment = {
+    ENVIRONMENT       = var.environment
+    AWS_S3_BUCKET     = aws_s3_bucket.cache.id
+    SECRETS_ARN       = aws_secretsmanager_secret.main.arn
+    API_KEYS_ARN      = aws_secretsmanager_secret.api_keys.arn
+    LOG_LEVEL         = var.environment == "prod" ? "INFO" : "DEBUG"
+    POWERTOOLS_SERVICE_NAME = "potential-parakeet"
+  }
+}
+
+# Data source for account ID
+data "aws_caller_identity" "current" {}
+
+# ============================================================================
+# Lambda Function: Daily Data Ingest
+# ============================================================================
+
+resource "aws_lambda_function" "ingest" {
+  function_name = "potential-parakeet-ingest-${var.environment}"
+  description   = "Daily market data ingestion from Tiingo/Polygon"
+  role          = aws_iam_role.lambda_execution.arn
+
+  # Use local file for initial deployment (switch to S3 in CI/CD later)
+  filename         = "${path.module}/../lambda-packages/ingest.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda-packages/ingest.zip")
+
+  runtime     = var.lambda_runtime
+  handler     = "handler.lambda_handler"
+  memory_size = 1024  # Higher memory for data processing
+  timeout     = 300   # 5 minutes for large data pulls
+
+  ephemeral_storage {
+    size = 1024  # 1GB for temporary data files
+  }
+
+  environment {
+    variables = merge(local.lambda_environment, {
+      FUNCTION_TYPE = "ingest"
+    })
+  }
+
+  reserved_concurrent_executions = var.lambda_reserved_concurrent_executions > 0 ? var.lambda_reserved_concurrent_executions : null
+
+  tracing_config {
+    mode = "Active"  # Enable X-Ray tracing
+  }
+
+  tags = merge(local.common_tags, {
+    Name     = "ingest-lambda-${var.environment}"
+    Function = "data-ingestion"
+  })
+
+  # Ignore changes to source code (updated by CI/CD)
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+# ============================================================================
+# Lambda Function: Trades API
+# ============================================================================
+
+resource "aws_lambda_function" "trades_api" {
+  function_name = "potential-parakeet-trades-api-${var.environment}"
+  description   = "Trading operations API"
+  role          = aws_iam_role.lambda_execution.arn
+
+  # Use local file for initial deployment
+  filename         = "${path.module}/../lambda-packages/trades_api.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda-packages/trades_api.zip")
+
+  runtime     = var.lambda_runtime
+  handler     = "handler.lambda_handler"
+  memory_size = var.lambda_memory_size
+  timeout     = var.lambda_timeout
+
+  ephemeral_storage {
+    size = var.lambda_ephemeral_storage_size
+  }
+
+  environment {
+    variables = merge(local.lambda_environment, {
+      FUNCTION_TYPE = "trades_api"
+    })
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = merge(local.common_tags, {
+    Name     = "trades-api-lambda-${var.environment}"
+    Function = "api-trades"
+  })
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+# ============================================================================
+# Lambda Function: Data API
+# ============================================================================
+
+resource "aws_lambda_function" "data_api" {
+  function_name = "potential-parakeet-data-api-${var.environment}"
+  description   = "Market data queries API"
+  role          = aws_iam_role.lambda_execution.arn
+
+  # Use local file for initial deployment
+  filename         = "${path.module}/../lambda-packages/data_api.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda-packages/data_api.zip")
+
+  runtime     = var.lambda_runtime
+  handler     = "handler.lambda_handler"
+  memory_size = var.lambda_memory_size
+  timeout     = var.lambda_timeout
+
+  ephemeral_storage {
+    size = var.lambda_ephemeral_storage_size
+  }
+
+  environment {
+    variables = merge(local.lambda_environment, {
+      FUNCTION_TYPE = "data_api"
+    })
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = merge(local.common_tags, {
+    Name     = "data-api-lambda-${var.environment}"
+    Function = "api-data"
+  })
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+# ============================================================================
+# Lambda Function: Strategies API
+# ============================================================================
+
+resource "aws_lambda_function" "strategies_api" {
+  function_name = "potential-parakeet-strategies-api-${var.environment}"
+  description   = "Strategy management API"
+  role          = aws_iam_role.lambda_execution.arn
+
+  # Use local file for initial deployment
+  filename         = "${path.module}/../lambda-packages/strategies_api.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda-packages/strategies_api.zip")
+
+  runtime     = var.lambda_runtime
+  handler     = "handler.lambda_handler"
+  memory_size = var.lambda_memory_size
+  timeout     = var.lambda_timeout
+
+  ephemeral_storage {
+    size = var.lambda_ephemeral_storage_size
+  }
+
+  environment {
+    variables = merge(local.lambda_environment, {
+      FUNCTION_TYPE = "strategies_api"
+    })
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = merge(local.common_tags, {
+    Name     = "strategies-api-lambda-${var.environment}"
+    Function = "api-strategies"
+  })
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+# ============================================================================
+# Lambda Function: Scanner API
+# ============================================================================
+
+resource "aws_lambda_function" "scanner_api" {
+  function_name = "potential-parakeet-scanner-api-${var.environment}"
+  description   = "Stock scanning API"
+  role          = aws_iam_role.lambda_execution.arn
+
+  # Use local file for initial deployment
+  filename         = "${path.module}/../lambda-packages/scanner_api.zip"
+  source_code_hash = filebase64sha256("${path.module}/../lambda-packages/scanner_api.zip")
+
+  runtime     = var.lambda_runtime
+  handler     = "handler.lambda_handler"
+  memory_size = 1024  # Higher memory for scanning operations
+  timeout     = 120   # 2 minutes for complex scans
+
+  ephemeral_storage {
+    size = var.lambda_ephemeral_storage_size
+  }
+
+  environment {
+    variables = merge(local.lambda_environment, {
+      FUNCTION_TYPE = "scanner_api"
+    })
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+
+  tags = merge(local.common_tags, {
+    Name     = "scanner-api-lambda-${var.environment}"
+    Function = "api-scanner"
+  })
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+# ============================================================================
+# CloudWatch Log Groups (with retention)
+# ============================================================================
+
+resource "aws_cloudwatch_log_group" "ingest" {
+  name              = "/aws/lambda/${aws_lambda_function.ingest.function_name}"
+  retention_in_days = var.environment == "prod" ? 30 : 7
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "trades_api" {
+  name              = "/aws/lambda/${aws_lambda_function.trades_api.function_name}"
+  retention_in_days = var.environment == "prod" ? 30 : 7
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "data_api" {
+  name              = "/aws/lambda/${aws_lambda_function.data_api.function_name}"
+  retention_in_days = var.environment == "prod" ? 30 : 7
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "strategies_api" {
+  name              = "/aws/lambda/${aws_lambda_function.strategies_api.function_name}"
+  retention_in_days = var.environment == "prod" ? 30 : 7
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "scanner_api" {
+  name              = "/aws/lambda/${aws_lambda_function.scanner_api.function_name}"
+  retention_in_days = var.environment == "prod" ? 30 : 7
+
+  tags = local.common_tags
+}
