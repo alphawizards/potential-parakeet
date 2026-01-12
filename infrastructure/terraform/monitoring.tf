@@ -15,6 +15,7 @@
 # ============================================================================
 
 resource "aws_sns_topic" "alarms" {
+  # checkov:skip=CKV_AWS_26:KMS CMK for SNS is cost-prohibitive
   count = var.enable_cloudwatch_alarms ? 1 : 0
 
   name = "potential-parakeet-alarms-${var.environment}"

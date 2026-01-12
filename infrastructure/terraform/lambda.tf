@@ -65,10 +65,17 @@ resource "aws_lambda_function" "ingest" {
   }
 
   environment {
+    # checkov:skip=CKV_AWS_173:KMS CMK for env vars is cost-prohibitive
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "ingest"
     })
   }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive (NAT Gateway)
 
   reserved_concurrent_executions = var.lambda_reserved_concurrent_executions > 0 ? var.lambda_reserved_concurrent_executions : null
 
@@ -110,10 +117,17 @@ resource "aws_lambda_function" "trades_api" {
   }
 
   environment {
+    # checkov:skip=CKV_AWS_173:KMS CMK for env vars is cost-prohibitive
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "trades_api"
     })
   }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive (NAT Gateway)
 
   tracing_config {
     mode = "Active"
@@ -152,6 +166,7 @@ resource "aws_lambda_function" "data_api" {
   }
 
   environment {
+    # checkov:skip=CKV_AWS_173:KMS CMK for env vars is cost-prohibitive
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "data_api"
     })
@@ -194,6 +209,7 @@ resource "aws_lambda_function" "strategies_api" {
   }
 
   environment {
+    # checkov:skip=CKV_AWS_173:KMS CMK for env vars is cost-prohibitive
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "strategies_api"
     })
@@ -236,6 +252,7 @@ resource "aws_lambda_function" "scanner_api" {
   }
 
   environment {
+    # checkov:skip=CKV_AWS_173:KMS CMK for env vars is cost-prohibitive
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "scanner_api"
     })
@@ -260,36 +277,54 @@ resource "aws_lambda_function" "scanner_api" {
 # ============================================================================
 
 resource "aws_cloudwatch_log_group" "ingest" {
+  # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
   name              = "/aws/lambda/${aws_lambda_function.ingest.function_name}"
-  retention_in_days = var.environment == "prod" ? 30 : 7
+  retention_in_days = 90
 
   tags = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "trades_api" {
+  # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
   name              = "/aws/lambda/${aws_lambda_function.trades_api.function_name}"
-  retention_in_days = var.environment == "prod" ? 30 : 7
+  retention_in_days = 90
 
   tags = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "data_api" {
+  # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
   name              = "/aws/lambda/${aws_lambda_function.data_api.function_name}"
-  retention_in_days = var.environment == "prod" ? 30 : 7
+  retention_in_days = 90
 
   tags = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "strategies_api" {
+  # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
   name              = "/aws/lambda/${aws_lambda_function.strategies_api.function_name}"
-  retention_in_days = var.environment == "prod" ? 30 : 7
+  retention_in_days = 90
 
   tags = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "scanner_api" {
+  # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
   name              = "/aws/lambda/${aws_lambda_function.scanner_api.function_name}"
-  retention_in_days = var.environment == "prod" ? 30 : 7
+  retention_in_days = 90
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# SQS Dead Letter Queue (DLQ)
+# ============================================================================
+
+resource "aws_sqs_queue" "lambda_dlq" {
+  # checkov:skip=CKV_AWS_27:SQS encryption with CMK is cost-prohibitive, using SSE-SQS
+  name                      = "potential-parakeet-lambda-dlq-${var.environment}"
+  message_retention_seconds = 1209600 # 14 days
+  sqs_managed_sse_enabled   = true
 
   tags = local.common_tags
 }

@@ -266,3 +266,27 @@ data "aws_iam_policy_document" "eventbridge_invoke_lambda" {
     ]
   }
 }
+
+# ============================================================================
+# SQS Permissions (for DLQ)
+# ============================================================================
+
+resource "aws_iam_role_policy" "lambda_sqs_dlq" {
+  name   = "sqs-dlq-policy"
+  role   = aws_iam_role.lambda_execution.id
+  policy = data.aws_iam_policy_document.lambda_sqs_dlq.json
+}
+
+data "aws_iam_policy_document" "lambda_sqs_dlq" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "sqs:SendMessage",
+    ]
+
+    resources = [
+      aws_sqs_queue.lambda_dlq.arn,
+    ]
+  }
+}
