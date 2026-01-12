@@ -16,6 +16,9 @@
 # ============================================================================
 
 resource "aws_s3_bucket" "cache" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication is cost-prohibitive
+  # checkov:skip=CKV_AWS_145:KMS CMK encryption is cost-prohibitive, using SSE-S3
+  # checkov:skip=CKV_AWS_18:Access logging enabled below via aws_s3_bucket_logging
   bucket = "${var.s3_bucket_name}-${var.environment}"
 
   tags = merge(
@@ -48,7 +51,7 @@ resource "aws_s3_bucket_versioning" "cache" {
   }
 }
 
-# Server-side encryption (AES256)
+# Server-side encryption (SSE-S3 is free)
 resource "aws_s3_bucket_server_side_encryption_configuration" "cache" {
   bucket = aws_s3_bucket.cache.id
 
@@ -58,6 +61,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cache" {
     }
     bucket_key_enabled = true # Reduce encryption costs
   }
+}
+
+# Access logging for cache bucket
+resource "aws_s3_bucket_logging" "cache" {
+  bucket = aws_s3_bucket.cache.id
+
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "cache/"
 }
 
 # Lifecycle policy for cost optimization
@@ -154,6 +165,9 @@ resource "aws_s3_bucket_cors_configuration" "cache" {
 # ============================================================================
 
 resource "aws_s3_bucket" "lambda_artifacts" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication is cost-prohibitive
+  # checkov:skip=CKV_AWS_145:KMS CMK encryption is cost-prohibitive, using SSE-S3
+  # checkov:skip=CKV_AWS_18:Access logging enabled below via aws_s3_bucket_logging
   bucket = "potential-parakeet-lambda-artifacts-${var.environment}"
 
   tags = merge(
@@ -184,6 +198,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_artifacts"
   }
 }
 
+# Access logging for artifacts bucket
+resource "aws_s3_bucket_logging" "lambda_artifacts" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "lambda_artifacts/"
+}
+
 # Lifecycle: Delete old Lambda packages after 30 days
 resource "aws_s3_bucket_lifecycle_configuration" "lambda_artifacts" {
   bucket = aws_s3_bucket.lambda_artifacts.id
@@ -191,6 +213,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "lambda_artifacts" {
   rule {
     id     = "cleanup-old-artifacts"
     status = "Enabled"
+
+    filter {
+      prefix = ""  # Apply to all objects
+    }
 
     # Keep only last 5 versions
     noncurrent_version_expiration {
@@ -201,6 +227,76 @@ resource "aws_s3_bucket_lifecycle_configuration" "lambda_artifacts" {
     # Delete artifacts older than 30 days
     expiration {
       days = 30
+    }
+
+    # Clean up incomplete multipart uploads (cost optimization)
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+# ============================================================================
+# S3 Bucket for Access Logs (Secure Storage)
+# ============================================================================
+
+resource "aws_s3_bucket" "logs" {
+  bucket = "potential-parakeet-logs-${var.environment}"
+  # checkov:skip=CKV_AWS_144:Logging bucket does not need replication
+  # checkov:skip=CKV_AWS_145:KMS CMK is cost-prohibitive
+  # checkov:skip=CKV_AWS_18:Logging bucket does not log to itself
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name    = "logs-${var.environment}"
+      Purpose = "access-logs"
+    }
+  )
+}
+
+resource "aws_s3_bucket_public_access_block" "logs" {
+  bucket = aws_s3_bucket.logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "logs" {
+  bucket = aws_s3_bucket.logs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
+  bucket = aws_s3_bucket.logs.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "logs" {
+  bucket = aws_s3_bucket.logs.id
+
+  rule {
+    id     = "expire-logs"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    expiration {
+      days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }

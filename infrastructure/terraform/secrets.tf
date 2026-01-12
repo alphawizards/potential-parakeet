@@ -16,6 +16,8 @@
 # ============================================================================
 
 resource "aws_secretsmanager_secret" "main" {
+  # checkov:skip=CKV_AWS_149:KMS CMK is cost-prohibitive, using default key
+  # checkov:skip=CKV2_AWS_57:Secret rotation is cost-prohibitive and requires maintenance
   name        = "potential-parakeet/${var.environment}"
   description = "Database credentials and configuration for Potential Parakeet ${var.environment}"
 
@@ -54,6 +56,8 @@ resource "aws_secretsmanager_secret_version" "main" {
 # ============================================================================
 
 resource "aws_secretsmanager_secret" "api_keys" {
+  # checkov:skip=CKV_AWS_149:KMS CMK is cost-prohibitive, using default key
+  # checkov:skip=CKV2_AWS_57:Secret rotation is cost-prohibitive
   name        = "potential-parakeet/${var.environment}/api-keys"
   description = "API keys for market data providers (${var.environment})"
 
