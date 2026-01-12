@@ -78,29 +78,26 @@ export const MOCK_STRATEGIES: StrategyMetrics[] = [
             { regime: 'SIDEWAYS', sharpe: 1.1, return_pct: 0.08, days: 42 }
         ],
         equity_curve: generateEquityCurve(252),
-        drawdown_series: []
-    },
-    {
-        id: 'hmm-regime',
-        name: 'HMM Regime Allocation',
-        returns: { cagr: 0.15, win_rate: 0.54, total_return: 0.35 },
-        risk: { max_drawdown: -0.18, tail_ratio: 1.5, volatility: 0.14 },
-        efficiency: { sharpe: 1.12, sortino: 1.6, calmar: 0.83 },
-        validity: {
-            psr: 0.94,        // Just below 95% threshold
-            dsr: 0.78,        // ⚠️ Yellow badge - borderline
-            num_trials: 48,   // Many variations tested
-            is_significant: false,
-            confidence_level: 'MEDIUM'
-        },
-        regime_performance: [
-            { regime: 'BULL', sharpe: 1.4, return_pct: 0.18, days: 110 },
-            { regime: 'BEAR', sharpe: 0.8, return_pct: 0.05, days: 60 },
-            { regime: 'HIGH_VOL', sharpe: 0.6, return_pct: 0.04, days: 45 },
-            { regime: 'SIDEWAYS', sharpe: 1.0, return_pct: 0.08, days: 37 }
+        drawdown_series: [],
+        // Forensic Data
+        ic_decay: [
+            { horizon: 1, ic: 0.08 },
+            { horizon: 2, ic: 0.06 },
+            { horizon: 5, ic: 0.04 },
+            { horizon: 10, ic: 0.02 },
+            { horizon: 20, ic: 0.01 }
         ],
-        equity_curve: generateEquityCurve(252),
-        drawdown_series: []
+        attribution: {
+            market_beta: 0.3,
+            style_factors: 0.2,
+            idiosyncratic_alpha: 0.5 // High Alpha -> Good
+        },
+        execution_surface: [
+            { vix: 12, slippage_bps: 2 },
+            { vix: 15, slippage_bps: 3 },
+            { vix: 25, slippage_bps: 8 },
+            { vix: 40, slippage_bps: 15 }
+        ]
     },
     {
         id: 'stat-arb-pairs',
@@ -115,58 +112,60 @@ export const MOCK_STRATEGIES: StrategyMetrics[] = [
             is_significant: true,
             confidence_level: 'HIGH'
         },
-        regime_performance: [
-            { regime: 'BULL', sharpe: 1.6, return_pct: 0.20, days: 100 },
-            { regime: 'BEAR', sharpe: 2.1, return_pct: 0.18, days: 50 },
-            { regime: 'HIGH_VOL', sharpe: 2.4, return_pct: 0.12, days: 62 },
-            { regime: 'SIDEWAYS', sharpe: 1.7, return_pct: 0.05, days: 40 }
-        ],
+        regime_performance: [],
         equity_curve: generateEquityCurve(252),
-        drawdown_series: []
+        drawdown_series: [],
+        // Forensic Data - Stable Alpha
+        ic_decay: [
+            { horizon: 1, ic: 0.12 },
+            { horizon: 2, ic: 0.11 },
+            { horizon: 5, ic: 0.09 },
+            { horizon: 10, ic: 0.07 },
+            { horizon: 20, ic: 0.05 }
+        ],
+        attribution: {
+            market_beta: 0.1,
+            style_factors: 0.1,
+            idiosyncratic_alpha: 0.8 // Pure Alpha
+        },
+        execution_surface: [
+            { vix: 10, slippage_bps: 3 },
+            { vix: 30, slippage_bps: 5 },
+            { vix: 50, slippage_bps: 8 } // Low impact
+        ]
     },
     {
         id: 'ml-predictor',
         name: 'ML Return Predictor',
         returns: { cagr: 0.28, win_rate: 0.55, total_return: 0.72 },
         risk: { max_drawdown: -0.25, tail_ratio: 1.2, volatility: 0.24 },
-        efficiency: { sharpe: 1.18, sortino: 1.4, calmar: 1.12 },
+        efficiency: { sharpe: 3.0, sortino: 1.4, calmar: 1.12 }, // High Sharpe
         validity: {
-            psr: 0.82,        // ✗ Not significant
+            psr: 0.82,
             dsr: 0.32,        // ✗ RED badge - likely overfit
-            num_trials: 247,  // GRAVEYARD: 247 variations tested!
+            num_trials: 1000, // GRAVEYARD: 1000 variations tested! -> Overfit
             is_significant: false,
             confidence_level: 'LOW'
         },
-        regime_performance: [
-            { regime: 'BULL', sharpe: 1.5, return_pct: 0.30, days: 90 },
-            { regime: 'BEAR', sharpe: -0.2, return_pct: -0.05, days: 70 },
-            { regime: 'HIGH_VOL', sharpe: 0.3, return_pct: 0.02, days: 52 },
-            { regime: 'SIDEWAYS', sharpe: 0.8, return_pct: 0.08, days: 40 }
-        ],
+        regime_performance: [],
         equity_curve: generateEquityCurve(252),
-        drawdown_series: []
-    },
-    {
-        id: 'dual-momentum',
-        name: 'Dual Momentum ETF',
-        returns: { cagr: 0.12, win_rate: 0.52, total_return: 0.28 },
-        risk: { max_drawdown: -0.16, tail_ratio: 1.4, volatility: 0.13 },
-        efficiency: { sharpe: 0.95, sortino: 1.3, calmar: 0.75 },
-        validity: {
-            psr: 0.91,        // Borderline
-            dsr: 0.85,        // ⚠️ Yellow
-            num_trials: 22,
-            is_significant: false,
-            confidence_level: 'MEDIUM'
+        drawdown_series: [],
+        ic_decay: [
+            { horizon: 1, ic: 0.15 },
+            { horizon: 2, ic: 0.02 }, // Drops fast
+            { horizon: 5, ic: 0.00 },
+            { horizon: 10, ic: -0.01 }
+        ],
+        attribution: {
+            market_beta: 0.8,
+            style_factors: 0.1,
+            idiosyncratic_alpha: 0.1 // Mostly Beta -> Bad
         },
-        regime_performance: [
-            { regime: 'BULL', sharpe: 1.2, return_pct: 0.15, days: 115 },
-            { regime: 'BEAR', sharpe: 0.1, return_pct: 0.01, days: 55 },
-            { regime: 'HIGH_VOL', sharpe: 0.5, return_pct: 0.04, days: 48 },
-            { regime: 'SIDEWAYS', sharpe: 0.7, return_pct: 0.08, days: 34 }
-        ],
-        equity_curve: generateEquityCurve(252),
-        drawdown_series: []
+        execution_surface: [
+            { vix: 10, slippage_bps: 2 },
+            { vix: 35, slippage_bps: 25 }, // High slippage in vol
+            { vix: 50, slippage_bps: 45 }
+        ]
     }
 ];
 
