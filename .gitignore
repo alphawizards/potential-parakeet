@@ -15,6 +15,7 @@ pip-wheel-metadata/
 *.pkl
 *.h5
 data/cache/
+cache/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -34,10 +35,24 @@ Thumbs.db
 *.log
 logs/
 
-# Environment
+# Environment & Secrets (CRITICAL - never commit!)
 .env
+.env.*
 .env.local
-*.env
+!.env.example
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Build
 dist/
@@ -47,34 +62,16 @@ build/
 # Node
 node_modules/
 
-# Test Results
-test-results/
-
 # Test
 .pytest_cache/
 .coverage
 htmlcov/
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+test-results/
+
+# Lambda packages (generated)
+infrastructure/lambda-packages/*.zip
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
