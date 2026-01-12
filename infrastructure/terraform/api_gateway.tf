@@ -82,29 +82,32 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 }
 
 # ============================================================================
-# JWT Authorizer (Cloudflare Access) - OPTIONAL
+# JWT Authorizer (Cloudflare Access)
 # ============================================================================
 
 # The authorizer validates JWTs from Cloudflare Access
-# To enable: Set cloudflare_access_audience to a non-empty value
 # Configure your Cloudflare Access application to issue JWTs with:
 # - Issuer: https://<your-team>.cloudflareaccess.com
 # - Audience: <your-application-aud>
 
-# NOTE: Authorizer is disabled for initial deployment
-# Uncomment and configure when Cloudflare Access is set up
-# resource "aws_apigatewayv2_authorizer" "cloudflare_jwt" {
-#   count            = var.cloudflare_access_audience != "" && var.cloudflare_access_audience != "placeholder" ? 1 : 0
-#   api_id           = aws_apigatewayv2_api.main.id
-#   name             = "cloudflare-access-jwt"
-#   authorizer_type  = "JWT"
-#   identity_sources = ["$request.header.CF-Access-JWT-Assertion"]
-#
-#   jwt_configuration {
-#     issuer   = "https://${var.cloudflare_team_domain}.cloudflareaccess.com"
-#     audience = [var.cloudflare_access_audience]
-#   }
-# }
+# Authorizer only created when cloudflare_access_audience is set
+resource "aws_apigatewayv2_authorizer" "cloudflare_jwt" {
+  count            = var.cloudflare_access_audience != "" && var.cloudflare_access_audience != "placeholder" ? 1 : 0
+  api_id           = aws_apigatewayv2_api.main.id
+  name             = "cloudflare-access-jwt"
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.CF-Access-JWT-Assertion"]
+
+  jwt_configuration {
+    issuer   = "https://${var.cloudflare_team_domain}.cloudflareaccess.com"
+    audience = [var.cloudflare_access_audience]
+  }
+}
+
+# Local to check if authorization is enabled
+locals {
+  jwt_auth_enabled = var.cloudflare_access_audience != "" && var.cloudflare_access_audience != "placeholder"
+}
 
 # ============================================================================
 # Lambda Integrations
@@ -143,36 +146,43 @@ resource "aws_apigatewayv2_integration" "scanner" {
 }
 
 # ============================================================================
-# Routes (Protected by JWT Authorizer)
+# Routes (Protected by JWT Authorizer when enabled)
 # ============================================================================
 
-# Trades routes (unauthenticated for initial deployment)
+# Trades routes
 resource "aws_apigatewayv2_route" "trades" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "ANY /trades/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.trades.id}"
-  # NOTE: Add authorization_type = "JWT" and authorizer_id when Cloudflare Access is configured
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "ANY /trades/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.trades.id}"
+  authorization_type = local.jwt_auth_enabled ? "JWT" : "NONE"
+  authorizer_id      = local.jwt_auth_enabled ? aws_apigatewayv2_authorizer.cloudflare_jwt[0].id : null
 }
 
 # Data routes
 resource "aws_apigatewayv2_route" "data" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "ANY /data/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.data.id}"
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "ANY /data/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.data.id}"
+  authorization_type = local.jwt_auth_enabled ? "JWT" : "NONE"
+  authorizer_id      = local.jwt_auth_enabled ? aws_apigatewayv2_authorizer.cloudflare_jwt[0].id : null
 }
 
 # Strategies routes
 resource "aws_apigatewayv2_route" "strategies" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "ANY /strategies/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.strategies.id}"
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "ANY /strategies/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.strategies.id}"
+  authorization_type = local.jwt_auth_enabled ? "JWT" : "NONE"
+  authorizer_id      = local.jwt_auth_enabled ? aws_apigatewayv2_authorizer.cloudflare_jwt[0].id : null
 }
 
 # Scanner routes
 resource "aws_apigatewayv2_route" "scanner" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "ANY /scanner/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.scanner.id}"
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "ANY /scanner/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.scanner.id}"
+  authorization_type = local.jwt_auth_enabled ? "JWT" : "NONE"
+  authorizer_id      = local.jwt_auth_enabled ? aws_apigatewayv2_authorizer.cloudflare_jwt[0].id : null
 }
 
 # Health check route (unauthenticated)
