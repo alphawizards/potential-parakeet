@@ -34,8 +34,25 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"  # nosec B104
     PORT: int = 8000
     
-    # Database
+    # Database (supports both SQLite for local dev and PostgreSQL for production)
     DATABASE_URL: str = "sqlite:///./data/trades.db"
+    NEON_DATABASE_URL: str = ""  # PostgreSQL connection string (e.g., postgresql+asyncpg://user:pass@host/db?sslmode=require)
+    USE_NEON: bool = False  # Set to True to use Neon PostgreSQL instead of SQLite
+
+    # AWS Configuration
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_SECRETS_MANAGER_NAME: str = "potential-parakeet/prod"  # Secrets Manager secret name
+
+    # S3 Configuration
+    S3_BUCKET_NAME: str = "potential-parakeet-cache"
+    S3_CACHE_PREFIX: str = "cache/"
+    USE_S3_CACHE: bool = False  # Set to True to use S3 instead of local file system
+
+    # Lambda Configuration
+    IS_LAMBDA: bool = False  # Auto-detected in Lambda environment
+    LAMBDA_TASK_ROOT: str = ""
     
     # CORS - stored as comma-separated string
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:8000"
@@ -67,6 +84,25 @@ class Settings(BaseSettings):
         if isinstance(self.CORS_ORIGINS, str):
             return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
         return self.CORS_ORIGINS
+
+    @property
+    def database_url_async(self) -> str:
+        """
+        Get the async database URL.
+        Uses Neon PostgreSQL if USE_NEON is True, otherwise SQLite.
+        """
+        if self.USE_NEON and self.NEON_DATABASE_URL:
+            # Ensure async driver is used
+            if "postgresql://" in self.NEON_DATABASE_URL:
+                return self.NEON_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            return self.NEON_DATABASE_URL
+        # SQLite async (using aiosqlite)
+        return self.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
+
+    @property
+    def is_lambda_environment(self) -> bool:
+        """Detect if running in AWS Lambda environment."""
+        return os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None or self.IS_LAMBDA
 
 
 # Global settings instance

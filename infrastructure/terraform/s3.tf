@@ -241,10 +241,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "lambda_artifacts" {
 # ============================================================================
 
 resource "aws_s3_bucket" "logs" {
-  bucket = "potential-parakeet-logs-${var.environment}"
   # checkov:skip=CKV_AWS_144:Logging bucket does not need replication
   # checkov:skip=CKV_AWS_145:KMS CMK is cost-prohibitive
   # checkov:skip=CKV_AWS_18:Logging bucket does not log to itself
+  bucket = "potential-parakeet-logs-${var.environment}"
 
   tags = merge(
     local.common_tags,
