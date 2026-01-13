@@ -6,8 +6,12 @@ Fetches GLD (Gold ETF) as a proxy for gold prices using Tiingo API
 
 from tiingo import TiingoClient
 import pandas as pd
+import sys
 from pathlib import Path
 from datetime import datetime
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 print("="*80)
 print("🥇 FETCHING GOLD PRICE DATA FROM TIINGO")

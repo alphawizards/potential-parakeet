@@ -22,9 +22,15 @@ A comprehensive quantitative investing framework implementing **Dual Momentum + 
 4. **Cost-Aware Execution**: $3 AUD flat fee per trade
 5. **Tax Efficiency**: Designed for Australian CGT rules (12-month discount consideration)
 6. **📊 Trading Dashboard**: Real-time trade tracking with rolling history table
-7. **🚀 Fast Data Loader**: Incremental loading with 240x speedup and 99.6% efficiency
-8. **🎯 Quant 2.0 Strategies**: OLMAR, Statistical Arbitrage, Regime Detection, Meta-Labeling
-9. **⚡ Data Source Standardization**: Unified cached data access (33x speedup, 560 stocks, 21 years)
+1.  **AUD Currency Normalization**: All US assets converted to AUD before analysis to capture true volatility
+2.  **Dual Momentum Signals**: Combines absolute momentum (trend) + relative momentum (cross-sectional)
+3.  **Hierarchical Risk Parity (HRP)**: Robust portfolio optimization without expected return estimation
+4.  **Cost-Aware Execution**: $3 AUD flat fee per trade
+5.  **Tax Efficiency**: Designed for Australian CGT rules (12-month discount consideration)
+6.  **📊 Trading Dashboard**: Real-time trade tracking with rolling history table
+7.  **🚀 Fast Data Loader**: Incremental loading with 240x speedup and 99.6% efficiency
+8.  **🎯 Quant 2.0 Strategies**: OLMAR, Statistical Arbitrage, Regime Detection, Meta-Labeling
+9.  **⚡ Data Source Standardization**: Unified cached data access (33x speedup, 560 stocks, 21 years)
 
 ---
 
@@ -37,35 +43,7 @@ potential-parakeet/
 │   ├── data_loader.py           # Legacy data fetching
 │   ├── fast_data_loader.py      # ⭐ NEW: Incremental data loader with retry logic
 │   ├── stock_universe.py        # S&P 500, NASDAQ 100, ASX 200 universe
-│   ├── signals.py               # Momentum signal generation
-│   ├── optimizer.py             # Riskfolio-Lib portfolio optimization
-│   ├── backtest.py              # vectorbt backtesting framework
-│   │
-│   ├── quant2/                  # ⭐ NEW: Advanced Quant Strategies
-│   │   ├── ml_meta_labeling.py  # Meta-labeling for trade filtering
-│   │   ├── regime_detection.py  # Market regime classification
-│   │   ├── stat_arb.py          # Statistical arbitrage pairs trading
-│   │   └── stress_testing.py    # DFAST 2025 stress scenarios
-│   │
-│   ├── olps/                    # Online Portfolio Selection
-│   │   ├── olmar_strategy.py    # OLMAR implementation
-│   │   ├── kernels.py           # Kernel functions for OLMAR
-│   │   └── backtest_olmar_optimized.py
-│   │
-│   ├── pipeline/                # Modular Trading Pipeline
-│   │   ├── data_layer.py        # Data ingestion
-│   │   ├── signal_layer.py      # Signal generation
-│   │   ├── allocation_layer.py  # Position sizing
-│   │   └── reporting_layer.py   # Performance reporting
-│   │
-│   └── hard_asset_*.py          # Gold/Commodity strategies
-│
-├── dashboard/                   # Interactive Dashboards
-│   ├── quant2_dashboard.html    # ⭐ NEW: Quant 2.0 strategies dashboard
-│   ├── quant2_strategy_guide.html
-│   ├── strategy_dashboard.html  # Original Quant 1.0 dashboard
-│   ├── quallamaggie_scanner.html
-│   └── data/                    # Generated performance data
+│   ├── ...
 │
 ├── backend/                     # FastAPI REST API
 │   ├── main.py                  # API entry point
@@ -73,14 +51,11 @@ potential-parakeet/
 │   ├── routers/                 # API endpoints
 │   └── quant/                   # ⭐ NEW: Quant infrastructure
 │
-├── reports/                     # Analysis reports
-│   ├── hard_asset_comparison.md
-│   └── olmar_*.json
-│
-├── cache/                       # ⭐ NEW: Parquet cache for fast data loading
-│
-├── refresh_data.py              # ⭐ NEW: Daily data refresh script
-├── test_incremental_loader.py   # ⭐ NEW: Test suite for data loader
+├── docs/                        # ⭐ NEW: Documentation & Reports
+├── scripts/                     # ⭐ NEW: Data & Maintenance Scripts
+├── examples/                    # ⭐ NEW: Usage & Demo Scripts
+├── tests/                       # ⭐ NEW: Test Suites
+├── cache/                       # Parquet cache for fast data loading
 └── requirements.txt             # Python dependencies
 ```
 
@@ -92,7 +67,7 @@ potential-parakeet/
 
 ```bash
 # Refresh market data (incremental - only fetches missing dates)
-python refresh_data.py
+python scripts/refresh_data.py
 
 # First run: ~38 minutes (682 tickers × 1 year)
 # Subsequent runs: ~10 seconds (incremental delta load)

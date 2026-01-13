@@ -10,6 +10,9 @@ from strategy.stock_universe import get_screener_universe, get_asx_etfs
 from datetime import datetime
 import time
 from pathlib import Path
+import sys
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 print("="*80)
 print("ASX TICKER DATA FETCH - 1 YEAR (yFinance)")

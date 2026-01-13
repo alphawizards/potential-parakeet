@@ -28,6 +28,9 @@ import time
 
 warnings.filterwarnings('ignore')
 
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Import strategies
 from strategy.quallamaggie_backtest import run_quallamaggie_backtest
 from strategy.quant2.meta_labeling.meta_model import MetaLabelModel

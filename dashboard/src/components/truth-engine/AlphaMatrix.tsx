@@ -17,7 +17,7 @@ import {
 } from '@tanstack/react-table';
 import { StrategyMetrics, isPSRSignificant } from '../../types/strategy';
 import { DSRBadge, PSRIndicator, GraveyardBadge } from './DSRBadge';
-import { ArrowUpDown, ChevronUp, ChevronDown, Filter, Search } from 'lucide-react';
+import { ArrowUpDown, ChevronUp, ChevronDown, Search } from 'lucide-react';
 
 interface AlphaMatrixProps {
     strategies: StrategyMetrics[];
