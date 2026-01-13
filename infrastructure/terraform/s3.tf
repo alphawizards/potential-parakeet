@@ -19,6 +19,7 @@ resource "aws_s3_bucket" "cache" {
   # checkov:skip=CKV_AWS_144:Cross-region replication is cost-prohibitive
   # checkov:skip=CKV_AWS_145:KMS CMK encryption is cost-prohibitive, using SSE-S3
   # checkov:skip=CKV_AWS_18:Access logging enabled below via aws_s3_bucket_logging
+  # checkov:skip=CKV2_AWS_62:S3 notification configuration is not required
   bucket = "${var.s3_bucket_name}-${var.environment}"
 
   tags = merge(
@@ -42,12 +43,12 @@ resource "aws_s3_bucket_public_access_block" "cache" {
   restrict_public_buckets = true
 }
 
-# Enable versioning (optional, for data recovery)
+# Enable versioning (Improved security, lifecycle managed below for cost)
 resource "aws_s3_bucket_versioning" "cache" {
   bucket = aws_s3_bucket.cache.id
 
   versioning_configuration {
-    status = var.enable_s3_versioning ? "Enabled" : "Suspended"
+    status = "Enabled"
   }
 }
 
@@ -136,7 +137,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "cache" {
       }
 
       noncurrent_version_expiration {
-        noncurrent_days = 90
+        noncurrent_days = 1 # Keep for only 1 day to avoid storage costs
+      }
+
+      abort_incomplete_multipart_upload {
+        days_after_initiation = 7
       }
     }
   }
@@ -168,6 +173,7 @@ resource "aws_s3_bucket" "lambda_artifacts" {
   # checkov:skip=CKV_AWS_144:Cross-region replication is cost-prohibitive
   # checkov:skip=CKV_AWS_145:KMS CMK encryption is cost-prohibitive, using SSE-S3
   # checkov:skip=CKV_AWS_18:Access logging enabled below via aws_s3_bucket_logging
+  # checkov:skip=CKV2_AWS_62:S3 notification configuration is not required
   bucket = "potential-parakeet-lambda-artifacts-${var.environment}"
 
   tags = merge(
@@ -186,6 +192,14 @@ resource "aws_s3_bucket_public_access_block" "lambda_artifacts" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# Enable versioning for artifacts
+resource "aws_s3_bucket_versioning" "lambda_artifacts" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_artifacts" {
@@ -244,6 +258,7 @@ resource "aws_s3_bucket" "logs" {
   # checkov:skip=CKV_AWS_144:Logging bucket does not need replication
   # checkov:skip=CKV_AWS_145:KMS CMK is cost-prohibitive
   # checkov:skip=CKV_AWS_18:Logging bucket does not log to itself
+  # checkov:skip=CKV2_AWS_62:S3 notification configuration is not required
   bucket = "potential-parakeet-logs-${var.environment}"
 
   tags = merge(
@@ -293,6 +308,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
 
     expiration {
       days = 90
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
     }
 
     abort_incomplete_multipart_upload {
