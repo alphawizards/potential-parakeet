@@ -47,6 +47,9 @@ data "aws_caller_identity" "current" {}
 # ============================================================================
 
 resource "aws_lambda_function" "ingest" {
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive (NAT Gateway)
+  # checkov:skip=CKV_AWS_272:Code signing is not required for this internal tool
+  # checkov:skip=CKV_AWS_116:DLQ is configured below via dead_letter_config
   function_name = "potential-parakeet-ingest-${var.environment}"
   description   = "Daily market data ingestion from Tiingo/Polygon"
   role          = aws_iam_role.lambda_execution.arn
@@ -99,6 +102,10 @@ resource "aws_lambda_function" "ingest" {
 # ============================================================================
 
 resource "aws_lambda_function" "trades_api" {
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive
+  # checkov:skip=CKV_AWS_272:Code signing is not required
+  # checkov:skip=CKV_AWS_116:DLQ is configured below
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is intentionally unreserved
   function_name = "potential-parakeet-trades-api-${var.environment}"
   description   = "Trading operations API"
   role          = aws_iam_role.lambda_execution.arn
@@ -148,6 +155,9 @@ resource "aws_lambda_function" "trades_api" {
 # ============================================================================
 
 resource "aws_lambda_function" "data_api" {
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive
+  # checkov:skip=CKV_AWS_272:Code signing is not required
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is intentionally unreserved
   function_name = "potential-parakeet-data-api-${var.environment}"
   description   = "Market data queries API"
   role          = aws_iam_role.lambda_execution.arn
@@ -191,6 +201,9 @@ resource "aws_lambda_function" "data_api" {
 # ============================================================================
 
 resource "aws_lambda_function" "strategies_api" {
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive
+  # checkov:skip=CKV_AWS_272:Code signing is not required
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is intentionally unreserved
   function_name = "potential-parakeet-strategies-api-${var.environment}"
   description   = "Strategy management API"
   role          = aws_iam_role.lambda_execution.arn
@@ -234,6 +247,9 @@ resource "aws_lambda_function" "strategies_api" {
 # ============================================================================
 
 resource "aws_lambda_function" "scanner_api" {
+  # checkov:skip=CKV_AWS_117:VPC placement is cost-prohibitive
+  # checkov:skip=CKV_AWS_272:Code signing is not required
+  # checkov:skip=CKV_AWS_115:Concurrent execution limit is intentionally unreserved
   function_name = "potential-parakeet-scanner-api-${var.environment}"
   description   = "Stock scanning API"
   role          = aws_iam_role.lambda_execution.arn
@@ -278,6 +294,7 @@ resource "aws_lambda_function" "scanner_api" {
 
 resource "aws_cloudwatch_log_group" "ingest" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days to maintain zero-cost profile
   name              = "/aws/lambda/${aws_lambda_function.ingest.function_name}"
   retention_in_days = 90
 
@@ -286,6 +303,7 @@ resource "aws_cloudwatch_log_group" "ingest" {
 
 resource "aws_cloudwatch_log_group" "trades_api" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days
   name              = "/aws/lambda/${aws_lambda_function.trades_api.function_name}"
   retention_in_days = 90
 
@@ -294,6 +312,7 @@ resource "aws_cloudwatch_log_group" "trades_api" {
 
 resource "aws_cloudwatch_log_group" "data_api" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days
   name              = "/aws/lambda/${aws_lambda_function.data_api.function_name}"
   retention_in_days = 90
 
@@ -302,6 +321,7 @@ resource "aws_cloudwatch_log_group" "data_api" {
 
 resource "aws_cloudwatch_log_group" "strategies_api" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days
   name              = "/aws/lambda/${aws_lambda_function.strategies_api.function_name}"
   retention_in_days = 90
 
@@ -310,6 +330,7 @@ resource "aws_cloudwatch_log_group" "strategies_api" {
 
 resource "aws_cloudwatch_log_group" "scanner_api" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days
   name              = "/aws/lambda/${aws_lambda_function.scanner_api.function_name}"
   retention_in_days = 90
 

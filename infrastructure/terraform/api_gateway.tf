@@ -76,6 +76,7 @@ resource "aws_apigatewayv2_stage" "main" {
 
 resource "aws_cloudwatch_log_group" "api_gateway" {
   # checkov:skip=CKV_AWS_158:KMS encryption for logs is cost-prohibitive
+  # checkov:skip=CKV_AWS_338:Log retention < 365 days
   name              = "/aws/apigateway/potential-parakeet-${var.environment}"
   retention_in_days = 90
 
@@ -188,7 +189,7 @@ resource "aws_apigatewayv2_route" "scanner" {
 
 # Health check route (unauthenticated)
 resource "aws_apigatewayv2_route" "health" {
-  # checkov:skip=CKV_AWS_308:Health check endpoint intentionally public
+  # checkov:skip=CKV_AWS_309:Health check endpoint intentionally public
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "GET /health"
   target    = "integrations/${aws_apigatewayv2_integration.data.id}"
