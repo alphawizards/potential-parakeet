@@ -182,6 +182,10 @@ resource "aws_lambda_function" "data_api" {
     })
   }
 
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
   tracing_config {
     mode = "Active"
   }
@@ -228,6 +232,10 @@ resource "aws_lambda_function" "strategies_api" {
     })
   }
 
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
   tracing_config {
     mode = "Active"
   }
@@ -272,6 +280,10 @@ resource "aws_lambda_function" "scanner_api" {
     variables = merge(local.lambda_environment, {
       FUNCTION_TYPE = "scanner_api"
     })
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
   }
 
   tracing_config {
