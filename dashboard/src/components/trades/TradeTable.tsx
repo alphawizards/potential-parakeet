@@ -4,9 +4,9 @@
  * Displays trade history in a sortable, filterable table.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Trade, TradeFilters } from '../../types/trade';
+import type { Trade } from '../../types/trade';
 import {
   formatCurrency,
   formatPercent,
@@ -92,9 +92,8 @@ export const TradeTable: React.FC<TradeTableProps> = ({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                    col.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
-                  }`}
+                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${col.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
+                    }`}
                   onClick={() => col.sortable && handleSort(col.key)}
                 >
                   {col.label}
@@ -174,7 +173,7 @@ const TradeRow: React.FC<TradeRowProps> = ({ trade }) => {
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
         {formatDateTime(trade.entry_date)}
       </td>
-      
+
       {/* Ticker */}
       <td className="px-4 py-3 whitespace-nowrap">
         <span className="font-mono font-medium text-gray-900">
@@ -186,29 +185,29 @@ const TradeRow: React.FC<TradeRowProps> = ({ trade }) => {
           </span>
         )}
       </td>
-      
+
       {/* Direction */}
       <td className="px-4 py-3 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getDirectionBadgeClass(trade.direction)}`}>
           {trade.direction}
         </span>
       </td>
-      
+
       {/* Quantity */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
         {trade.quantity.toLocaleString()}
       </td>
-      
+
       {/* Entry Price */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
         {formatCurrency(trade.entry_price)}
       </td>
-      
+
       {/* Exit Price */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
         {trade.exit_price ? formatCurrency(trade.exit_price) : '-'}
       </td>
-      
+
       {/* P&L */}
       <td className="px-4 py-3 whitespace-nowrap">
         {trade.pnl !== null && trade.pnl !== undefined ? (
@@ -219,7 +218,7 @@ const TradeRow: React.FC<TradeRowProps> = ({ trade }) => {
           <span className="text-sm text-gray-400">-</span>
         )}
       </td>
-      
+
       {/* P&L % */}
       <td className="px-4 py-3 whitespace-nowrap">
         {trade.pnl_percent !== null && trade.pnl_percent !== undefined ? (
@@ -230,14 +229,14 @@ const TradeRow: React.FC<TradeRowProps> = ({ trade }) => {
           <span className="text-sm text-gray-400">-</span>
         )}
       </td>
-      
+
       {/* Status */}
       <td className="px-4 py-3 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusBadgeClass(trade.status)}`}>
           {trade.status}
         </span>
       </td>
-      
+
       {/* Strategy */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
         {trade.strategy_name}

@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from 'react';
-import type { Trade, PortfolioMetrics } from '../types/trade';
+import type { Trade } from '../types/trade';
 
 /**
  * Format currency values

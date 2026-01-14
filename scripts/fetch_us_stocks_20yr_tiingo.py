@@ -121,6 +121,8 @@ print()
 
 # Cache info
 from pathlib import Path
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 cache_dir = Path("cache")
 if cache_dir.exists():
     cache_files = list(cache_dir.glob("*.parquet"))

@@ -35,7 +35,7 @@ export const Dashboard: React.FC = () => {
     goToPage,
   } = useTrades(1, 50);
 
-  const { summary, loading: summaryLoading } = useDashboard(100000);
+  const { summary } = useDashboard(100000);
 
   const handleFilterChange = (newFilters: TradeFiltersType) => {
     updateFilters(newFilters);
@@ -110,25 +110,22 @@ export const Dashboard: React.FC = () => {
                 <div className="grid grid-cols-3 gap-6">
                   <div>
                     <p className="text-blue-100 text-xs">Today</p>
-                    <p className={`text-lg font-semibold ${
-                      (summary?.today_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
-                    }`}>
+                    <p className={`text-lg font-semibold ${(summary?.today_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
+                      }`}>
                       {formatCurrency(summary?.today_pnl || 0)}
                     </p>
                   </div>
                   <div>
                     <p className="text-blue-100 text-xs">This Week</p>
-                    <p className={`text-lg font-semibold ${
-                      (summary?.week_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
-                    }`}>
+                    <p className={`text-lg font-semibold ${(summary?.week_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
+                      }`}>
                       {formatCurrency(summary?.week_pnl || 0)}
                     </p>
                   </div>
                   <div>
                     <p className="text-blue-100 text-xs">This Month</p>
-                    <p className={`text-lg font-semibold ${
-                      (summary?.month_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
-                    }`}>
+                    <p className={`text-lg font-semibold ${(summary?.month_pnl || 0) >= 0 ? 'text-green-300' : 'text-red-300'
+                      }`}>
                       {formatCurrency(summary?.month_pnl || 0)}
                     </p>
                   </div>

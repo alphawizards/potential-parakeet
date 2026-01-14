@@ -24,7 +24,7 @@ interface DrawdownChartProps {
 
 export const DrawdownChart: React.FC<DrawdownChartProps> = ({ data, title = 'Drawdown Analysis' }) => {
     // Custom tooltip
-    const CustomTooltip = ({ active, payload, label }: any) => {
+    const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const point = payload[0].payload as DrawdownPoint;
             const ddPct = (point.drawdown * 100).toFixed(2);

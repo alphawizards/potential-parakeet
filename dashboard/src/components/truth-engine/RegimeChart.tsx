@@ -68,7 +68,7 @@ export const RegimeChart: React.FC<RegimeChartProps> = ({ data, title = 'Equity 
     }, [data]);
 
     // Custom tooltip
-    const CustomTooltip = ({ active, payload, label }: any) => {
+    const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const point = payload[0].payload as EquityPoint;
             return (

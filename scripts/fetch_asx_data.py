@@ -24,7 +24,7 @@ from datetime import datetime
 import pandas as pd
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from strategy.unified_asx_loader import UnifiedASXLoader
 from strategy.stock_universe import get_asx200_tickers, get_asx_etfs
