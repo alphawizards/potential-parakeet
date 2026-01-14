@@ -3,6 +3,9 @@ name = "quant-trading-dashboard"
 compatibility_date = "2024-04-03"
 pages_build_output_dir = "dashboard/dist"
 
+[assets]
+directory = "dashboard/dist"
+
 [vars]
 ENVIRONMENT = "production"
 API_URL = "https://api.potential-parakeet.com"
