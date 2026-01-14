@@ -32,7 +32,7 @@ pandas>=2.0.0
 numpy>=1.24.0
 
 # Technical Analysis
-pandas_ta>=0.3.14
+pandas_ta>=0.4.67b0
 
 # Portfolio Optimization (CRITICAL)
 riskfolio-lib>=6.0.0
