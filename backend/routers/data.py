@@ -15,6 +15,9 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add parent path for strategy imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -209,8 +212,8 @@ async def refresh_data(
                     loader.fetch_prices_fast(yfinance_tickers, use_cache=not request.force)
                     
                 print("Data refresh complete!")
-            except Exception as e:
-                print(f"Data refresh error: {e}")
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Data refresh issue: {e}")
         
         background_tasks.add_task(do_refresh)
         
@@ -225,12 +228,19 @@ async def refresh_data(
     except ImportError as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to import data loader: {str(e)}"
+            detail="Data loader module not available"
         )
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"Data refresh failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Data refresh failed: {str(e)}"
+            detail="Data refresh failed due to invalid parameters"
+        )
+    except Exception as e:
+        logger.exception("Data refresh unexpected error")
+        raise HTTPException(
+            status_code=500,
+            detail="Data refresh failed"
         )
 
 
