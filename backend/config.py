@@ -78,6 +78,26 @@ class Settings(BaseSettings):
     API_KEY: str = ""
     API_KEY_HASH: str = ""
     
+    # JWT Configuration
+    JWT_SECRET: str = "dev-jwt-secret-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRY_HOURS: int = 24
+    
+    @field_validator('JWT_SECRET', 'API_KEY')
+    @classmethod
+    def validate_production_secrets(cls, v, info):
+        """Reject default development secrets in production."""
+        # Only validate if DEBUG is False (production mode)
+        # Note: This runs before full model construction, so we check env var directly
+        import os
+        debug = os.getenv('DEBUG', 'true').lower() in ('true', '1', 'yes')
+        if not debug:
+            if info.field_name == 'JWT_SECRET' and v == "dev-jwt-secret-change-in-production":
+                raise ValueError("JWT_SECRET must be changed in production (DEBUG=false)")
+            if info.field_name == 'API_KEY' and v == "dev-key-change-me":
+                raise ValueError("API_KEY must be changed in production (DEBUG=false)")
+        return v
+    
     @property
     def cors_origins_list(self) -> List[str]:
         """Get CORS origins as list."""

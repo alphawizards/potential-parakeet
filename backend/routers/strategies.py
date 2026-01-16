@@ -17,6 +17,9 @@ from datetime import datetime
 from pathlib import Path
 import json
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add parent path for strategy imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -284,13 +287,26 @@ async def run_backtest(
             
             print(f"✅ Backtest completed: {request.strategy_name}")
             
+        except ImportError as e:
+            error_msg = f"Required module not available: {e}"
+            _backtest_status[request.strategy_name] = f"failed: {error_msg}"
+            _backtest_results[request.strategy_name] = {"error": error_msg}
+            logger.error(f"Backtest {request.strategy_name}: ImportError - {e}")
+        except ValueError as e:
+            error_msg = f"Invalid parameter: {e}"
+            _backtest_status[request.strategy_name] = f"failed: {error_msg}"
+            _backtest_results[request.strategy_name] = {"error": error_msg}
+            logger.error(f"Backtest {request.strategy_name}: ValueError - {e}")
+        except RuntimeError as e:
+            error_msg = f"Strategy execution error: {e}"
+            _backtest_status[request.strategy_name] = f"failed: {error_msg}"
+            _backtest_results[request.strategy_name] = {"error": error_msg}
+            logger.error(f"Backtest {request.strategy_name}: RuntimeError - {e}")
         except Exception as e:
-            _backtest_status[request.strategy_name] = f"failed: {str(e)}"
-            _backtest_results[request.strategy_name] = {
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-            print(f"❌ Backtest failed: {request.strategy_name} - {e}")
+            # Last resort catch - log full traceback but don't expose to client
+            _backtest_status[request.strategy_name] = "failed: Internal error"
+            _backtest_results[request.strategy_name] = {"error": "Internal server error"}
+            logger.exception(f"Backtest {request.strategy_name}: Unhandled exception")
     
     # Add to background tasks
     background_tasks.add_task(execute_backtest)

@@ -16,6 +16,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from pathlib import Path
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add parent path for strategy imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -180,8 +183,14 @@ async def calculate_residual_momentum_live(tickers: List[str]) -> Dict[str, Any]
             "source": "live"
         }
         
+    except ImportError as e:
+        logger.debug(f"Live calculation unavailable (missing module): {e}")
+        return None
+    except ValueError as e:
+        logger.warning(f"Live calculation failed (data issue): {e}")
+        return None
     except Exception as e:
-        print(f"Live calculation failed, using mock data: {e}")
+        logger.warning(f"Live calculation failed (unexpected): {e}")
         return None
 
 
@@ -281,13 +290,23 @@ async def validate_universe(
             sample_tickers=tickers[:10],
             api_status="OK"
         )
-    except Exception as e:
+    except (ValueError, KeyError) as e:
+        logger.warning(f"Universe validation failed for {universe}: {e}")
         return UniverseValidationResponse(
             universe=universe,
             valid=False,
             ticker_count=0,
             sample_tickers=[],
-            api_status=f"Error: {str(e)}"
+            api_status="Error: Unable to retrieve tickers"
+        )
+    except Exception as e:
+        logger.error(f"Universe validation unexpected error for {universe}: {e}")
+        return UniverseValidationResponse(
+            universe=universe,
+            valid=False,
+            ticker_count=0,
+            sample_tickers=[],
+            api_status="Error: Internal server error"
         )
 
 
@@ -408,14 +427,25 @@ async def get_universes_summary() -> Dict[str, Any]:
                 "sample": tickers[:5],
                 "status": "available"
             })
-        except Exception as e:
+        except (KeyError, ValueError) as e:
+            logger.warning(f"Universe {key} retrieval failed: {e}")
             summaries.append({
                 "key": key,
                 "name": UNIVERSE_REGISTRY[key].get("name", key),
                 "region": UNIVERSE_REGISTRY[key].get("region", "Unknown"),
                 "ticker_count": 0,
                 "sample": [],
-                "status": f"error: {str(e)}"
+                "status": "error: retrieval failed"
+            })
+        except Exception as e:
+            logger.error(f"Universe {key} unexpected error: {e}")
+            summaries.append({
+                "key": key,
+                "name": UNIVERSE_REGISTRY[key].get("name", key),
+                "region": UNIVERSE_REGISTRY[key].get("region", "Unknown"),
+                "ticker_count": 0,
+                "sample": [],
+                "status": "error: internal error"
             })
     
     return {

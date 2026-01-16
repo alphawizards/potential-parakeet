@@ -8,6 +8,7 @@ uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 mangum>=0.17.0  # AWS Lambda adapter for FastAPI
+PyJWT>=2.8.0  # JWT token encoding/decoding for authentication
 
 # Database
 sqlalchemy>=2.0.0

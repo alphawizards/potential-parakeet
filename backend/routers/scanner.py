@@ -10,7 +10,7 @@ Scanners:
 """
 
 import sys
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -19,6 +19,12 @@ import json
 
 # Add parent path for strategy imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Import authentication
+try:
+    from backend.auth import get_current_user
+except ImportError:
+    from auth import get_current_user
 
 router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 
@@ -167,7 +173,8 @@ async def get_scan_results(
 @router.post("/run")
 async def run_scan(
     request: ScanRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Run a stock scan.
