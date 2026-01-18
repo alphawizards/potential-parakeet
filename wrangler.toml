@@ -6,8 +6,8 @@ pages_build_output_dir = "dashboard/dist"
 # Cloudflare Pages Configuration
 # Build command: cd dashboard && npm install && npm run build
 # Build output directory: dashboard/dist
-# Deploy command: Leave empty - Pages automatically deploys build output
-# DO NOT use 'npx wrangler versions upload' (that's for Workers, not Pages)
+# IMPORTANT: Set "Build output directory" in Cloudflare Pages dashboard to: dashboard/dist
+# Leave the "Deploy command" field EMPTY in the Cloudflare Pages dashboard
 
 [vars]
 ENVIRONMENT = "production"
