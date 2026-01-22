@@ -234,8 +234,15 @@
 
 <body>
     <header>
-        <div class="header-title">Comprehensive Backtest Results</div>
-        <div class="header-subtitle" id="subtitle">Loading backtest data...</div>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <a href="/"
+                style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600;">🏠
+                Trading Dashboard</a>
+            <div>
+                <div class="header-title">Comprehensive Backtest Results</div>
+                <div class="header-subtitle" id="subtitle">Loading backtest data...</div>
+            </div>
+        </div>
     </header>
 
     <main>
@@ -288,6 +295,20 @@
 
     <script>
         async function loadBacktestData() {
+            try {
+                // Phase 2: Try API endpoint first
+                const apiResponse = await fetch('/api/dashboard/backtest');
+                if (apiResponse.ok) {
+                    const data = await apiResponse.json();
+                    console.log('Loaded backtest data from API');
+                    populateDashboard(data);
+                    return;
+                }
+            } catch (apiError) {
+                console.warn('API not available, falling back to static data:', apiError.message);
+            }
+
+            // Fallback to static JSON
             try {
                 const response = await fetch('data/comprehensive_backtest.json');
                 if (!response.ok) {

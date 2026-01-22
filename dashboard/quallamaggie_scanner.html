@@ -485,6 +485,9 @@
     <header>
         <div class="logo">Quant<span>Dash</span></div>
         <nav>
+            <a href="/"
+                style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 6px 14px; border-radius: 8px;">🏠
+                Trading Dashboard</a>
             <a href="strategy_dashboard.html">📊 Dashboard</a>
             <a href="quallamaggie_scanner.html" class="active">🎯 Scanner</a>
             <a href="strategy_guide.html">📚 Strategy Guide</a>
@@ -581,7 +584,7 @@
                     <div class="filter-toggle active" data-category="consolidation" data-filter="atr_contraction"
                         onclick="toggleFilter(this)">
                         <span class="toggle-icon">✓</span>
-                        <span class="filter-label">ATR(14) < 20D Avg ATR</span>
+                        <span class="filter-label">ATR(14) &lt; 20D Avg ATR</span>
                     </div>
                 </div>
             </div>
@@ -938,8 +941,21 @@
             `;
 
             try {
-                // Simulate API call - in production this would call a backend
-                const results = await performLocalScan(tickers);
+                // Phase 2: Try API first, then fall back to local scan
+                let results;
+                try {
+                    const apiResponse = await fetch(`/api/scanner/quallamaggie?universe=${universe}`);
+                    if (apiResponse.ok) {
+                        const apiData = await apiResponse.json();
+                        console.log('Loaded Quallamaggie data from API:', apiData);
+                        results = apiData.results || [];
+                    } else {
+                        throw new Error('API not available');
+                    }
+                } catch (apiError) {
+                    console.warn('API not available, using local scan:', apiError.message);
+                    results = await performLocalScan(tickers);
+                }
                 scanResults = results;
 
                 // Update stats

@@ -663,6 +663,69 @@
         Chart.defaults.color = '#a0a0c0';
         Chart.defaults.borderColor = '#2a2a4a';
 
+        // Phase 2: Load Meta-Labeling data from API
+        async function loadMetaLabelingData() {
+            try {
+                const response = await fetch('/api/quant2/meta-labeling?universe=SPX500');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Loaded Meta-Labeling data from API:', data);
+
+                    // Update stats (find elements by their current content)
+                    const statCards = document.querySelectorAll('.stat-card');
+                    statCards[0].querySelector('.stat-value').textContent = data.total_signals;
+                    statCards[1].querySelector('.stat-value').textContent = data.accepted_signals;
+                    statCards[2].querySelector('.stat-value').textContent = data.total_signals - data.accepted_signals;
+                    statCards[3].querySelector('.stat-value').textContent = data.model_auc.toFixed(2);
+                    statCards[5].querySelector('.stat-value').textContent = Math.round(data.rejection_rate * 100) + '%';
+
+                    // Update signals cards if we have data
+                    if (data.signals && data.signals.length > 0) {
+                        const signalsGrid = document.querySelector('.signals-grid');
+                        signalsGrid.innerHTML = data.signals.map(signal => `
+                            <div class="signal-card ${signal.meta_label.toLowerCase()}">
+                                <div class="signal-header">
+                                    <div>
+                                        <div class="signal-ticker">${signal.ticker}</div>
+                                        <div class="signal-type">${signal.base_signal} Signal</div>
+                                    </div>
+                                    <span class="signal-badge badge-${signal.meta_label.toLowerCase() === 'accept' ? 'accept' : 'reject'}">
+                                        ${signal.meta_label === 'ACCEPT' ? '✓ ACCEPTED' : '✗ REJECTED'}
+                                    </span>
+                                </div>
+                                <div class="signal-prob" style="color: var(--${signal.meta_label === 'ACCEPT' ? 'success' : 'danger'});">
+                                    P = ${signal.confidence.toFixed(2)}
+                                </div>
+                                <div class="signal-features">
+                                    <div class="feature-item">
+                                        <span class="feature-label">Momentum</span>
+                                        <span class="feature-value">${signal.features.momentum_score.toFixed(2)}</span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-label">Volume</span>
+                                        <span class="feature-value">${signal.features.volume_ratio.toFixed(1)}x</span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-label">Volatility</span>
+                                        <span class="feature-value">${(signal.features.volatility_rank * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-label">Regime Align</span>
+                                        <span class="feature-value">${(signal.features.regime_alignment * 100).toFixed(0)}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (error) {
+                console.warn('API not available, using static data:', error.message);
+            }
+        }
+
+        // Load data on page load
+        loadMetaLabelingData();
+
         // Calibration Chart
         const calibCtx = document.getElementById('calibrationChart').getContext('2d');
         new Chart(calibCtx, {

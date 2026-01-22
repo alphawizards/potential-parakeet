@@ -79,6 +79,33 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
           </div>
+          {/* Strategy Navigation */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              href="/quant2_dashboard.html"
+              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              🎯 Quant 2.0 Strategies
+            </a>
+            <a
+              href="/olmar_dashboard.html"
+              className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              📈 OLMAR Strategy
+            </a>
+            <a
+              href="/quallamaggie_scanner.html"
+              className="inline-flex items-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
+            >
+              🔍 Quallamaggie Scanner
+            </a>
+            <a
+              href="/comprehensive_backtest_dashboard.html"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              📊 Backtest Results
+            </a>
+          </div>
         </div>
       </header>
 
