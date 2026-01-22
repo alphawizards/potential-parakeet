@@ -549,6 +549,50 @@
         Chart.defaults.color = '#a0a0c0';
         Chart.defaults.borderColor = '#2a2a4a';
 
+        // Phase 2: Load Stat Arb data from API
+        async function loadStatArbData() {
+            try {
+                const response = await fetch('/api/quant2/stat-arb?universe=SPX500');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Loaded Stat Arb data from API:', data);
+
+                    // Update stats
+                    document.getElementById('pairCount').textContent = data.total_pairs;
+                    document.getElementById('clusterCount').textContent = data.clusters_found;
+                    document.getElementById('signalCount').textContent = data.active_signals;
+
+                    // Update signals table
+                    const tbody = document.querySelector('#signalsTable tbody');
+                    if (data.pairs && data.pairs.length > 0) {
+                        tbody.innerHTML = data.pairs.filter(p => p.signal !== 'NEUTRAL').map(pair => {
+                            const signalClass = pair.signal === 'LONG_SPREAD' ? 'signal-long' :
+                                pair.signal === 'SHORT_SPREAD' ? 'signal-short' : 'signal-hold';
+                            const zColor = pair.z_score < 0 ? 'var(--danger)' : 'var(--success)';
+                            return `
+                                <tr>
+                                    <td><span class="pair-badge">${pair.stock_a} / ${pair.stock_b}</span></td>
+                                    <td>Cluster</td>
+                                    <td style="color: ${zColor}; font-weight: 600;">${pair.z_score}</td>
+                                    <td>${pair.correlation}</td>
+                                    <td>${pair.half_life}d</td>
+                                    <td><span class="signal-badge ${signalClass}">${pair.signal.replace('_', ' ')}</span></td>
+                                    <td>${pair.signal === 'LONG_SPREAD' ?
+                                    `Long ${pair.stock_a}, Short ${pair.stock_b}` :
+                                    `Short ${pair.stock_a}, Long ${pair.stock_b}`}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
+                }
+            } catch (error) {
+                console.warn('API not available, using static data:', error.message);
+            }
+        }
+
+        // Load data on page load
+        loadStatArbData();
+
         // Spread Chart
         const spreadCtx = document.getElementById('spreadChart').getContext('2d');
         const spreadData = [];

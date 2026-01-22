@@ -5,14 +5,13 @@
  * Displays DSR/PSR metrics, graveyard statistics, and regime analysis.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
     AlphaMatrix,
     RegimeChart,
     DrawdownChart,
-    MOCK_STRATEGIES,
-    GRAVEYARD_STATS
 } from '../components/truth-engine';
+import { useTruthEngine, useSummaryStats } from '../hooks/useTruthEngine';
 import { StrategyMetrics } from '../types/strategy';
 import {
     Shield,
@@ -20,29 +19,35 @@ import {
     CheckCircle,
     XCircle,
     TrendingUp,
-    Activity
+    Activity,
+    Loader2
 } from 'lucide-react';
 
 export const TruthEngine: React.FC = () => {
-    const [selectedStrategy, setSelectedStrategy] = useState<StrategyMetrics | null>(
-        MOCK_STRATEGIES[0]
-    );
+    const { strategies, graveyardStats, loading } = useTruthEngine('SPX500');
+    const [selectedStrategy, setSelectedStrategy] = useState<StrategyMetrics | null>(null);
 
-    // Derive summary stats
-    const summaryStats = useMemo(() => {
-        const significant = MOCK_STRATEGIES.filter(s => s.validity.is_significant);
-        const avgDSR = MOCK_STRATEGIES.reduce((sum, s) => sum + s.validity.dsr, 0) / MOCK_STRATEGIES.length;
-        const avgPSR = MOCK_STRATEGIES.reduce((sum, s) => sum + s.validity.psr, 0) / MOCK_STRATEGIES.length;
+    // Set first strategy as selected when data loads
+    React.useEffect(() => {
+        if (strategies.length > 0 && !selectedStrategy) {
+            setSelectedStrategy(strategies[0]);
+        }
+    }, [strategies, selectedStrategy]);
 
-        return {
-            total: MOCK_STRATEGIES.length,
-            significant: significant.length,
-            rejected: MOCK_STRATEGIES.length - significant.length,
-            avgDSR: avgDSR.toFixed(2),
-            avgPSR: (avgPSR * 100).toFixed(1),
-            totalTrials: GRAVEYARD_STATS.total_trials_tested
-        };
-    }, []);
+    // Derive summary stats from API data
+    const summaryStats = useSummaryStats(strategies, graveyardStats);
+
+    // Show loading state
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-12 h-12 text-emerald-400 animate-spin" />
+                    <p className="text-slate-400">Loading Truth Engine data...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-950 text-white">
@@ -113,7 +118,7 @@ export const TruthEngine: React.FC = () => {
                 {/* Alpha Matrix */}
                 <section>
                     <AlphaMatrix
-                        strategies={MOCK_STRATEGIES}
+                        strategies={strategies}
                         onSelectStrategy={setSelectedStrategy}
                     />
                 </section>
@@ -126,8 +131,8 @@ export const TruthEngine: React.FC = () => {
                                 🔬 Microscope: {selectedStrategy.name}
                             </h2>
                             <span className={`px-2 py-1 rounded text-xs font-medium ${selectedStrategy.validity.is_significant
-                                    ? 'bg-emerald-500/20 text-emerald-400'
-                                    : 'bg-red-500/20 text-red-400'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/20 text-red-400'
                                 }`}>
                                 {selectedStrategy.validity.is_significant ? 'VALIDATED' : 'NOT SIGNIFICANT'}
                             </span>

@@ -424,6 +424,9 @@
     <header>
         <div class="logo">OLMAR<span>Dash</span></div>
         <div class="nav-links">
+            <a href="/"
+                style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 6px 14px; border-radius: 8px;">🏠
+                Trading Dashboard</a>
             <a href="strategy_dashboard.html">📊 Main Dashboard</a>
             <a href="quallamaggie_scanner.html">🎯 Scanner</a>
             <a href="strategy_guide.html">📚 Guide</a>
@@ -548,6 +551,20 @@
         let currentHistoryTab = 'weekly';
 
         async function loadData() {
+            try {
+                // Phase 2: Try API endpoint first
+                const apiResponse = await fetch('/api/dashboard/olmar');
+                if (apiResponse.ok) {
+                    data = await apiResponse.json();
+                    console.log('Loaded OLMAR data from API');
+                    renderDashboard();
+                    return;
+                }
+            } catch (apiError) {
+                console.warn('API not available, falling back to static data:', apiError.message);
+            }
+
+            // Fallback to static JSON
             try {
                 const response = await fetch('olmar_data.json');
                 if (!response.ok) throw new Error('Data not found');

@@ -549,6 +549,41 @@
         Chart.defaults.color = '#a0a0c0';
         Chart.defaults.borderColor = '#2a2a4a';
 
+        // Phase 2: Load Regime data from API
+        async function loadRegimeData() {
+            try {
+                const response = await fetch('/api/quant2/regime?universe=SPX500');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Loaded Regime data from API:', data);
+
+                    // Update current regime display
+                    const regime = data.current_regime.toLowerCase();
+                    const regimeDot = document.getElementById('regimeDot');
+                    const regimeName = document.getElementById('regimeName');
+
+                    regimeDot.className = 'regime-dot ' + regime;
+                    regimeName.className = 'regime-name ' + regime;
+                    regimeName.textContent = data.current_regime;
+
+                    // Update probability bars
+                    const probs = data.regime_probabilities;
+                    document.getElementById('bullProb').textContent = Math.round(probs.bull * 100) + '%';
+                    document.getElementById('bearProb').textContent = Math.round(probs.bear * 100) + '%';
+                    document.getElementById('chopProb').textContent = Math.round(probs.chop * 100) + '%';
+
+                    document.getElementById('bullBar').style.width = (probs.bull * 100) + '%';
+                    document.getElementById('bearBar').style.width = (probs.bear * 100) + '%';
+                    document.getElementById('chopBar').style.width = (probs.chop * 100) + '%';
+                }
+            } catch (error) {
+                console.warn('API not available, using static data:', error.message);
+            }
+        }
+
+        // Load data on page load
+        loadRegimeData();
+
         // Regime History Chart
         const historyCtx = document.getElementById('regimeHistory').getContext('2d');
         const regimeData = [];
