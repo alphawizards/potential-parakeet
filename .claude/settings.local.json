@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(npx wrangler:*)",
+      "Bash(npm run build:*)",
+      "Bash(dir:*)",
+      "Bash(npm install)",
+      "Bash(npm:*)",
+      "Bash(powershell -Command \"cd ''c:\\\\Users\\\\ckr_4\\\\01 Projects\\\\potential-parakeet\\\\dashboard''; npm run build\")",
+      "Bash(powershell -Command:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: update README with project status and add agent configuration\n\n- Add current status table showing deployment readiness\n- Add deployment section with Cloudflare and AWS configuration\n- Update version history with v3.0.0 \\(Cloudflare/AWS migration\\)\n- Add documentation links table\n- Fix duplicate key features content\n- Add .agent folder with workflows and rules\n- Add deployment-reviewer skill for Cloudflare setup\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh pr create:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}
